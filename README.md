@@ -9,6 +9,8 @@
 
 当前版本：`0.2.0`
 
+部分功能依靠 [SongRequestLite](https://github.com/AKZAkkarin/maimai_song_request_lite)。
+
 ## 功能
 
 ### 数据维护
@@ -34,7 +36,7 @@
 - 查看曲绘、谱面信息和成绩状态
 - 可以直接编辑成绩库内的成绩
 - 可以将谱面加入收藏或黑名单
-- 可以直接向 SongRequestLite 直接发送指令跳转到指定歌曲（点歌）
+- 可以直接向 SongRequestLite 发送指令，跳转到指定歌曲（点歌）
 
 ### 打歌助手
 
