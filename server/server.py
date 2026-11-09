@@ -61,6 +61,14 @@ STATIC_FILES = {"/": "index.html", "/index.html": "index.html",
                 "/vendor/Sortable.min.js": "vendor/Sortable.min.js"}
 DIALOG_TIMEOUT = None       # 不限时：一直等用户选或取消（页面上会挡住操作）
 
+# 代码版 UI 素材生成器（独立于 dataUI 原图）。
+sys.path.insert(0, str(PROJECT_DIR))
+try:
+    from tools.ui_flat import ensure_assets as ensure_ui_assets
+except Exception as _ui_import_error:  # noqa: BLE001
+    ensure_ui_assets = None
+    _UI_IMPORT_ERROR = str(_ui_import_error)
+
 
 def now_stamp() -> str:
     return datetime.now(TZ_CN).strftime("%Y-%m-%dT%H:%M:%S+0800")
@@ -300,7 +308,7 @@ def file_response(handler, path: Path, root: Path) -> None:
         return handler._json({"error": "not found"}, 404)
     body = target.read_bytes()
     ctype = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-             ".webp": "image/webp", ".gif": "image/gif", ".ttf": "font/ttf",
+             ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml", ".ttf": "font/ttf",
              ".otf": "font/otf", ".css": "text/css", ".js": "text/javascript"}.get(
                  target.suffix.lower(), "application/octet-stream")
     handler.send_response(200)
@@ -312,6 +320,10 @@ def file_response(handler, path: Path, root: Path) -> None:
 
 
 COVER_DIR = PROJECT_DIR / "data" / "image" / "cover"
+UI_DIR = PROJECT_DIR / "dataUI"
+UI_VG_DIR = PROJECT_DIR / "dataUI_VG"
+UI_MANIFEST = UI_VG_DIR / "manifest.json"
+_UI_STATUS_CACHE = {"at": 0.0, "value": None}
 
 # ── 曲库浏览（GET /api/songs）：一次给整个曲库，排序 / 筛选 / 分页都在前端做 ──
 # 排序口径（前端）：dataid 从大到小；同一个 dataid 里按 dx → std → utage → utage2p；
@@ -324,6 +336,52 @@ from lib.versions import (RATING_VERSIONS, VERSION_FIX, VERSION_ORDER,  # noqa: 
 from tools.play_assistant import assistant as assist
 _SONG_BASE = {"key": None, "songs": []}
 _COVER_IDS = {"mtime": None, "ids": set()}
+
+
+def ui_asset_status() -> dict:
+    """检查 dataUI 和 dataUI_VG 是否完整，供顶栏切换按钮使用。"""
+    now = time.monotonic()
+    cached = _UI_STATUS_CACHE.get("value")
+    if cached is not None and now - float(_UI_STATUS_CACHE.get("at") or 0) < 2.0:
+        return cached
+    try:
+        doc = json.loads(UI_MANIFEST.read_text(encoding="utf-8"))
+        files = doc.get("files") or []
+    except (OSError, ValueError):
+        files = []
+    missing_data = []
+    missing_vg = []
+    for item in files:
+        rel = str(item.get("from") or "").replace("\\", "/")
+        if not rel:
+            continue
+        if not (UI_DIR / rel).is_file():
+            missing_data.append(rel)
+        to = str(item.get("to") or Path(rel).with_suffix(".svg")).replace("\\", "/")
+        if not (UI_VG_DIR / to).is_file():
+            missing_vg.append(to)
+    data_complete = bool(files) and not missing_data
+    vg_complete = bool(files) and not missing_vg
+    result = {
+        "total": len(files),
+        "dataComplete": data_complete,
+        "vgComplete": vg_complete,
+        "canToggle": data_complete and vg_complete,
+        "missingData": missing_data[:20],
+        "missingVg": missing_vg[:20],
+    }
+    _UI_STATUS_CACHE["at"] = now
+    _UI_STATUS_CACHE["value"] = result
+    return result
+
+
+def ui_variant_from_cookie(handler) -> str:
+    raw = handler.headers.get("Cookie") or ""
+    for part in raw.split(";"):
+        key, _, value = part.strip().partition("=")
+        if key == "ui_asset":
+            return "vg" if value.strip() == "vg" else "base"
+    return "base"
 
 
 def score_bits(row: dict | None) -> dict:
@@ -1447,6 +1505,155 @@ ASSIST_LOCK = threading.RLock()
 BRIDGE_SCRIPT = PROJECT_DIR / "tools" / "play_assistant" / "bridge.py"
 
 
+def mod_save_url(settings: dict | None = None) -> tuple[str | None, str]:
+    """拼出游戏机 mod 的 /save 地址。"""
+    settings = settings or assist.load_settings()
+    host = str(settings.get("host") or "").strip()
+    if not host:
+        return None, "还没有填写游戏机 IP"
+    port = int(settings.get("modPort") or 8790)
+    if host.startswith("http://") or host.startswith("https://"):
+        base = host.rstrip("/")
+    else:
+        base = "http://" + host
+    return f"{base}:{port}/save", ""
+
+
+def fetch_mod_save() -> tuple[dict | None, str]:
+    """从游戏机 mod 拉当前 1P 存档。"""
+    url, error = mod_save_url()
+    if url is None:
+        return None, error
+    try:
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as response:
+            doc = json.loads(response.read().decode("utf-8", "replace"))
+    except Exception as exc:  # noqa: BLE001
+        return None, f"拉取 mod 存档失败（{url}）：{exc}"
+    if not isinstance(doc, dict) or not doc.get("ok"):
+        return None, "mod 返回失败：" + str((doc or {}).get("error") or "ok=false")
+    return doc, ""
+
+
+def _mod_rank(item: dict, achievement: float) -> int:
+    try:
+        rank = int(item.get("rank") or 0)
+    except (TypeError, ValueError):
+        rank = 0
+    return rank if rank > 0 else assistant_rank_of(achievement)
+
+
+def sync_save(user_id: str = "", match_iid: int | None = None,
+              match_cid: int | None = None) -> tuple[dict | None, str]:
+    """
+    把 mod 当前 1P 存档整份替换到本地成绩库。
+    - 不传 user_id：按存档里的 user.name 自动找用户，没有就新建；
+    - 传 user_id：要求本地用户名与存档 user.name 一致。
+    返回值第一项是 user 字典，第二项是错误文本。
+    """
+    doc, error = fetch_mod_save()
+    if doc is None:
+        return None, error
+
+    name = str((doc.get("user") or {}).get("name") or "").strip()
+    if not name:
+        return None, "mod 存档没有用户名"
+
+    users = load_users()
+    target = None
+    if user_id:
+        target = next((u for u in users if str(u.get("id")) == user_id), None)
+        if target is None:
+            return None, "本地用户不存在"
+        if str(target.get("name") or "") != name:
+            return None, f"机台当前是「{name}」，本地选的是「{target.get('name')}」；请先同步并切换用户"
+    else:
+        target = next((u for u in users if str(u.get("name") or "") == name), None)
+        if target is None:
+            target, why = create_user(name)
+            if target is None:
+                # 可能是并发/重名，重新查一次
+                users = load_users()
+                target = next((u for u in users if str(u.get("name") or "") == name), None)
+                if target is None:
+                    return None, "创建用户失败：" + why
+
+    rows = []
+    source_scores = doc.get("scores") or []
+    for item in source_scores:
+        try:
+            iid = int(item.get("internalId") or 0)
+            cid = int(item.get("chartId") if item.get("chartId") is not None else item.get("chartid") or 0)
+            ach = float(item.get("achievement") or 0)
+        except (TypeError, ValueError):
+            continue
+        if iid <= 0 or cid < 0:
+            continue
+        if ach <= 1.0 and ach > 0:
+            ach *= 100.0
+        try:
+            play_count = int(item.get("playCount") or 0)
+            combo = int(item.get("combo") or 0)
+            sync_status = int(item.get("sync") or 0)
+            delux = int(item.get("deluxScore") or 0)
+        except (TypeError, ValueError):
+            play_count = combo = sync_status = delux = 0
+        row = {
+            "internalId": iid,
+            "chartid": cid,
+            "achievement": max(0, int(round(ach * 10000))),
+            "comboStatus": combo,
+            "syncStatus": sync_status,
+            "deluxscoreMax": delux,
+            "playCount": play_count,
+            "RANK": _mod_rank(item, ach),
+            "dxscore": None,
+        }
+        try:
+            row["dxscore"] = assistant_dx_star(target["id"], iid, cid, delux)
+        except Exception:
+            pass
+        rows.append(row)
+
+    # mod 的 scores 是整份快照；同名用户整份替换，避免旧成绩残留
+    rows.sort(key=lambda r: (int(r.get("internalId") or 0), int(r.get("chartid") or 0)))
+    out = {
+        "schema": 1,
+        "generatedAt": datetime.now(TZ_CN).strftime("%Y-%m-%dT%H:%M:%S+0800"),
+        "source": {
+            "type": "mod-save",
+            "url": mod_save_url()[0],
+            "user": name,
+        },
+        "counts": {"songs": len(rows), "played": sum(1 for r in rows if r.get("playCount", 0) > 0)},
+        "scores": rows,
+    }
+    path = user_dir(target["id"]) / "scores.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.part")
+        tmp.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        return None, f"写成绩库失败：{exc}"
+
+    related_error = assistant_run_related(target["id"])
+    matched = False
+    if match_iid is not None and match_cid is not None:
+        matched = assistant_advance_if_match(target["id"], int(match_iid), int(match_cid))
+        state = assist.load_state(target["id"])
+        assistant_fill_preview(target["id"], state)
+        assist.save_state(target["id"], state)
+    return {
+        "user": target,
+        "count": len(rows),
+        "source": name,
+        "relatedError": related_error,
+        "matched": matched,
+        "next": assistant_bridge_next(target["id"]),
+    }, ""
+
+
 def assistant_analysis_map(user_id: str) -> dict:
     path = user_dir(user_id) / "analysis.json"
     try:
@@ -1631,9 +1838,13 @@ def assistant_log_tail(limit: int = 500) -> str:
     if not path:
         return ""
     try:
-        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        # newline="" 很关键：默认文本模式会把 \r 也转成 \n，后面的覆盖行就失效了。
+        with open(path, "r", encoding="utf-8", errors="replace", newline="") as handle:
+            text = handle.read()
     except OSError:
         return ""
+    # bridge 的等待计数用 \r 覆盖同一行；日志接口只保留每次覆盖后的最后内容。
+    lines = [part.rsplit("\r", 1)[-1] for part in text.replace("\r\n", "\n").split("\n")]
     return "\n".join(lines[-limit:])
 
 
@@ -1679,7 +1890,8 @@ def assistant_start_bridge(user_id: str, server_port: int, mode: str = "push") -
                "--host", str(settings.get("host") or ""),
                "--mod-port", str(settings.get("modPort") or 8790),
                "--callback-port", str(callback_port),
-               "--server", f"http://127.0.0.1:{server_port}"]
+               "--server", f"http://127.0.0.1:{server_port}",
+               "--miss-mode", str(settings.get("missMode") or "wait")]
         if score_only:
             cmd.append("--score-only")
         try:
@@ -1700,6 +1912,20 @@ def assistant_start_bridge(user_id: str, server_port: int, mode: str = "push") -
             ASSIST["proc"] = None
             return False, "启动失败：" + (tail or "bridge 立即退出")
         return True, "已启动"
+
+
+def assistant_bridge_control(action: str) -> tuple[bool, str]:
+    """向正在运行的 bridge 控制端口发 /stop、/repush、/skip。"""
+    settings = assist.load_settings()
+    port = int(settings.get("callbackPort") or 20010)
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/{action}",
+            data=b"{}", method="POST", headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=3).read()
+        return True, ""
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
 
 
 def assistant_stop_bridge() -> tuple[bool, str]:
@@ -2098,6 +2324,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "log": assistant_log_tail(),
                                "logs": assist.list_logs(user),
                                "running": bool(ASSIST.get("proc") and ASSIST["proc"].poll() is None)})
+        if path == "/api/ui-assets":
+            status = ui_asset_status()
+            mode = ui_variant_from_cookie(self)
+            return self._json({"ok": True, "mode": mode, **status})
         if path == "/api/users":
             users = load_users()
             for user in users:                              # 卡片要的：头像 / 有没有成绩 / 最近更新 / 三个数
@@ -2134,10 +2364,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "not found"}, 404)
             return file_response(self, source, source.parent)
         if path.startswith("/ui/"):
-            return file_response(self, PROJECT_DIR / "dataUI" / path[4:], PROJECT_DIR / "dataUI")
+            rel = path[4:]
+            if ui_variant_from_cookie(self) == "vg":
+                # 大多数是 .svg；默认头像是代码生成的 .png。
+                for candidate in (UI_VG_DIR / rel, UI_VG_DIR / str(Path(rel).with_suffix(".svg"))):
+                    if candidate.is_file():
+                        return file_response(self, candidate, UI_VG_DIR)
+            return file_response(self, UI_DIR / rel, UI_DIR)
         if path in ("/fonts/round", "/fonts/bold"):
             name = "圆体.ttf" if path.endswith("round") else "粗体.ttf"
-            return file_response(self, PROJECT_DIR / "Fonts" / name, PROJECT_DIR / "Fonts")
+            return file_response(self, PROJECT_DIR / "dataUI" / "Fonts" / name, PROJECT_DIR / "dataUI" / "Fonts")
         if path == "/api/avatar":
             query = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
             user_id = (query.get("user") or [""])[0]
@@ -2325,6 +2561,23 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 warning = None
             return self._json({"path": chosen, "note": note, "warning": warning})
+        if path == "/api/save/sync":
+            body = self._read_json()
+            user_id = str(body.get("user") or "")
+            if user_id and not valid_user_id(user_id):
+                return self._json({"ok": False, "error": "用户 id 不合法"}, 400)
+            # 手动“机台同步”：先停掉正在跑的推歌脚本，再抓存档。
+            proc = ASSIST.get("proc")
+            stopped = False
+            if proc is not None and proc.poll() is None:
+                stopped_now, stop_info = assistant_stop_bridge()
+                if not stopped_now:
+                    return self._json({"ok": False, "error": "停止推歌脚本失败：" + stop_info}, 409)
+                stopped = True
+            result, error = sync_save(user_id)
+            if result is None:
+                return self._json({"ok": False, "error": error, "stopped": stopped}, 409)
+            return self._json({"ok": True, "stopped": stopped, **result})
         if path == "/api/assistant/settings":
             body = self._read_json()
             return self._json({"ok": True, "settings": assist.save_settings(body)})
@@ -2353,6 +2606,8 @@ class Handler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 return self._json({"ok": False, "error": "index 不对"}, 400)
             force = bool(body.get("force"))
+            proc = ASSIST.get("proc")
+            was_running = bool(proc and proc.poll() is None)
             state = assist.load_state(user_id)
             preview = state.get("preview") or []
             if index < 0 or index >= len(preview):
@@ -2385,7 +2640,41 @@ class Handler(BaseHTTPRequestHandler):
             state["preview"] = preview
             assistant_fill_preview(user_id, state)
             assist.save_state(user_id, state)
+            bridge_ok, bridge_error = True, ""
+            if path.endswith("/skip") and index == 0 and was_running:
+                bridge_ok, bridge_error = assistant_bridge_control("skip")
             return self._json({"ok": True, "empty": empty,
+                               "bridgeOk": bridge_ok, "bridgeError": bridge_error,
+                               **assistant_payload(user_id, with_counts=True)})
+        if path == "/api/assistant/sync-save":
+            body = self._read_json()
+            user_id = str(body.get("user") or "")
+            if not valid_user_id(user_id):
+                return self._json({"ok": False, "error": "bad user"}, 400)
+            try:
+                iid = int(body.get("internalId")) if body.get("internalId") is not None else None
+                cid = int(body.get("chartid")) if body.get("chartid") is not None else None
+            except (TypeError, ValueError):
+                return self._json({"ok": False, "error": "internalId/chartid 不对"}, 400)
+            result, error = sync_save(user_id, iid, cid)
+            if result is None:
+                return self._json({"ok": False, "error": error}, 409)
+            return self._json({"ok": True, **result})
+        if path == "/api/assistant/advance":
+            body = self._read_json()
+            user_id = str(body.get("user") or "")
+            if not valid_user_id(user_id):
+                return self._json({"ok": False, "error": "bad user"}, 400)
+            try:
+                iid = int(body.get("internalId"))
+                cid = int(body.get("chartid"))
+            except (TypeError, ValueError):
+                return self._json({"ok": False, "error": "internalId/chartid 不对"}, 400)
+            matched = assistant_advance_if_match(user_id, iid, cid)
+            state = assist.load_state(user_id)
+            assistant_fill_preview(user_id, state)
+            assist.save_state(user_id, state)
+            return self._json({"ok": True, "matched": matched,
                                **assistant_payload(user_id, with_counts=True)})
         if path == "/api/assistant/start":
             body = self._read_json()
@@ -2393,8 +2682,11 @@ class Handler(BaseHTTPRequestHandler):
             if not valid_user_id(user_id):
                 return self._json({"ok": False, "error": "bad user"}, 400)
             mode = str(body.get("mode") or "push")
-            if mode not in ("push", "score"):
-                return self._json({"ok": False, "error": "mode 只能是 push 或 score"}, 400)
+            if mode != "push":
+                return self._json({"ok": False, "error": "打歌助手现在只支持推歌模式"}, 400)
+            sync_result, sync_error = sync_save(user_id)
+            if sync_result is None:
+                return self._json({"ok": False, "error": "同步存档失败：" + sync_error}, 409)
             ok, info = assistant_start_bridge(user_id, self.server.server_port, mode)
             return self._json({"ok": ok, "info": info}, 200 if ok else 409)
         if path == "/api/assistant/stop":
@@ -2500,6 +2792,16 @@ def main(argv=None) -> int:
     ap.add_argument("--chains-file", metavar="PATH",
                     help="换成别的步骤表（默认 tools/run_chain/chains.json；自检用来跑临时链）")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
+
+    if ensure_ui_assets is not None:
+        try:
+            ui_ok, ui_msg = ensure_ui_assets()
+            if not ui_ok:
+                print(f"[WARN] 代码版 UI 素材生成失败：{ui_msg}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[WARN] 代码版 UI 素材生成异常：{exc}", file=sys.stderr)
+    else:
+        print(f"[WARN] 代码版 UI 素材生成器加载失败：{_UI_IMPORT_ERROR}", file=sys.stderr)
 
     global CHAINS_FILE
     if args.chains_file:

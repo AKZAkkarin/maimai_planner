@@ -102,8 +102,35 @@ export function setChain(name) {
   chain = name;
 }
 
+async function initUiToggle() {
+  const btn = $("ui-toggle");
+  if (!btn) return;
+  let data = null;
+  try { data = await api("/api/ui-assets"); } catch (_) { data = null; }
+  const mode = data && data.mode === "vg" ? "vg" : "base";
+  btn.disabled = false;
+  btn.textContent = mode === "vg" ? "素材：代码" : "素材：图片";
+  btn.title = data && data.canToggle
+    ? "在游戏原图与代码版 UI 素材之间切换"
+    : "素材不完整，切换时会弹出警告";
+  btn.onclick = () => {
+    if (!data || !data.canToggle) {
+      const missData = data ? (data.missingData || []).length : 0;
+      const missVg = data ? (data.missingVg || []).length : 0;
+      const detail = data
+        ? `dataUI 缺 ${missData} 个，dataUI_VG 缺 ${missVg} 个。`
+        : "读取素材状态失败。";
+      if (!confirm("素材不完整：" + detail + " 切换后可能显示缺图，仍要切换吗？")) return;
+    }
+    const next = mode === "vg" ? "base" : "vg";
+    document.cookie = "ui_asset=" + next + "; path=/; max-age=31536000; SameSite=Lax";
+    location.reload();
+  };
+}
+
 /* ── 启动：读配置/链、恢复初始页、加载用户（v103：从页面顶部 IIFE 挪进来，由 main.js 在所有模块加载完后调用）── */
 export async function boot() {
+  await initUiToggle();
   $("small-build").onclick = () =>
     startRun({chain: smallChainName(), gamePackage: $("small").value || null}, $("small-note2"));
 

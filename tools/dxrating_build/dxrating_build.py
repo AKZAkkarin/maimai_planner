@@ -24,7 +24,9 @@
        161852 -> "1852" -> 1852      （宴谱）
      不用「dx 减 10000」那种算法：本地实测有 dx 谱 internalId 本身就 < 10000
      （けーね 360、Burn My Soul 1639）会算出负数。
-  5. `internalId` 在歌曲级，按族算（与本地游戏完全一致）：
+  5. 临时覆盖：`dxdata_overrides.json` 可在 build 前修正上游错误 ID；
+     规则独立、可删除，并与本地 title+version 的 dataid 做校验。
+  6. `internalId` 在歌曲级，按族算（与本地游戏完全一致）：
         std = dataid、dx = dataid + 10000、宴谱 = 上游原值。
      上游没给号的留 null（缺号清单里会列出来）。
   6. 谱面的 `id`（上游哈希串）删除，换成 `chartid` —— 只为读的时候快速判断难度：
@@ -82,6 +84,8 @@ except Exception:                                          # env.py 缺失也不
 SCRIPT_DIR_NAME = "dxrating_build"
 SOURCE_SCRIPT_DIR = "catalog_dxdata"
 SOURCE_NAME = "dxdata.json"
+OVERRIDE_NAME = "dxdata_overrides.json"   # 上游 ID 临时修正表（可删）
+OVERRIDE_PATH = Path(__file__).resolve().parent / OVERRIDE_NAME
 # 谱面族：一份文件一族，绝不混装（上游把 std/dx 混在同一条记录里，所以产出必须按族拆开）
 FAMILY_ORDER = ("dx", "std", "utage", "utage2p")
 FAMILY_FILE = {"dx": "dxrating-dx.json", "std": "dxrating-std.json",
@@ -240,6 +244,72 @@ def chartid_of(difficulty, category) -> int | None:
     if slot is not None:
         return slot
     return UTAGE_SLOT if category == "宴会場" else None
+
+
+def load_overrides() -> list[dict]:
+    if not OVERRIDE_PATH.is_file():
+        return []
+    try:
+        doc = json.loads(OVERRIDE_PATH.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"读不出临时覆盖表 {OVERRIDE_PATH}：{exc}")
+    items = doc.get("overrides") if isinstance(doc, dict) else None
+    if not isinstance(items, list):
+        raise RuntimeError(f"临时覆盖表格式不对：{OVERRIDE_PATH}")
+    return [x for x in items if isinstance(x, dict)]
+
+
+def apply_overrides(doc: dict, overrides: list[dict],
+                    local_dataids: dict[tuple[str, str, str], int]) -> tuple[int, int]:
+    """只改内存里的上游 dxdata；返回 (实际改动谱面数, 已修复条数)。"""
+    applied = 0
+    already = 0
+    for ov in overrides:
+        if str(ov.get("source") or "dxdata") != "dxdata":
+            continue
+        song_id = str(ov.get("songId") or "")
+        title = str(ov.get("title") or "")
+        version = str(ov.get("version") or "")
+        family = str(ov.get("family") or "std")
+        try:
+            old_id = int(ov.get("fromInternalId"))
+            new_id = int(ov.get("toInternalId"))
+        except (TypeError, ValueError):
+            raise RuntimeError(f"覆盖表缺 fromInternalId/toInternalId：{ov}")
+        target = local_dataids.get((family, title, version))
+        if target is not None and dataid_of(new_id) != target:
+            raise RuntimeError(
+                f"覆盖目标与本地曲库不一致：{title} / {version} "
+                f"覆盖 {new_id}，本地 dataid {target}")
+        matched_song = False
+        fixed_song = False
+        for song in doc.get("songs") or []:
+            if song_id and str(song.get("id") or "") != song_id:
+                continue
+            if title and str(song.get("title") or "") != title:
+                continue
+            if version and str(song.get("version") or "") != version:
+                continue
+            matched_song = True
+            for sh in song.get("sheets") or []:
+                if str(sh.get("type") or "") != family:
+                    continue
+                if sh.get("internalId") == old_id:
+                    sh["internalId"] = new_id
+                    applied += 1
+                elif sh.get("internalId") == new_id:
+                    fixed_song = True
+        if not matched_song:
+            raise RuntimeError(f"覆盖表找不到歌曲：{title} / {version} / {song_id}")
+        if fixed_song and not applied:
+            already += 1
+            print(f"[override] 已修复：{title} / {version} 已是 internalId {new_id}")
+        elif applied:
+            print(f"[override] {title} / {version}: internalId {old_id} → {new_id}"
+                  f"（{applied} 张谱面）")
+        else:
+            print(f"[override] 未命中：{title} / {version} 上游没有 internalId {old_id}")
+    return applied, already
 
 
 def split_records(doc: dict, local_dataids: dict[tuple[str, str, str], int] | None = None) -> dict[str, list]:
@@ -436,6 +506,14 @@ def main(argv=None) -> int:
         return 2
     except (OSError, ValueError) as exc:
         print(f"[错误] 读不出上游原文：{type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        overrides = load_overrides()
+        if overrides:
+            apply_overrides(doc, overrides, local_dataids)
+    except RuntimeError as exc:
+        print(f"[错误] {exc}", file=sys.stderr)
         return 2
 
     by_family = split_records(doc, local_dataids)

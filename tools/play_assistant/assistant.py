@@ -14,7 +14,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 USER_DIR = PROJECT_DIR / "dataUser"
 GLOBAL_SETTINGS = USER_DIR / "assistant-settings.json"
-DEFAULT_SETTINGS = {"host": "", "modPort": 8790, "callbackPort": 20010}
+DEFAULT_SETTINGS = {"host": "", "modPort": 8790, "callbackPort": 20010, "missMode": "wait"}
 DEFAULT_POOLS = ("mastered", "pushable_b35", "pushable_b15", "ap", "practice",
                  "accuracy", "challenge", "unplayed", "favorite")
 

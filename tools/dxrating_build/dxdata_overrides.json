@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "overrides": [
+    {
+      "source": "dxdata",
+      "songId": "dsng_ykj35qttmh",
+      "title": "Can Do",
+      "version": "MAGiCAL",
+      "family": "std",
+      "fromInternalId": 397,
+      "toInternalId": 2086,
+      "reason": "歌曲复活且谱面完全翻新；dxrating.net 仍使用旧 ID 397，本地当前 ID 为 2086",
+      "createdAt": "2026-11-09",
+      "removeWhen": "dxdata 中该曲 internalId 变为 2086"
+    }
+  ]
+}

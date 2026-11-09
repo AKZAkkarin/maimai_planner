@@ -79,6 +79,7 @@ ALIASES_CHIFFON_NAME = "aliasesTag-chiffon.json"
 ALIASES_LXNS_SCRIPT_DIR = "aliasesTag_lxns"                # 第三方别名表（落雪 lxns；文件不在就跳过）
 ALIASES_LXNS_NAME = "aliasesTag-lxns.json"
 TZ_CN = timezone(timedelta(hours=8))
+DATAID_MAX_DEFAULT = 5000          # 自制谱：dataid > 5000 的整首不进入 fusion
 
 RULE = "-" * 70
 BAR = "=" * 70
@@ -258,7 +259,8 @@ def fuse_song(song: dict, local_song: dict | None, tags_by_sheet: dict,
 
 
 def build_doc(records: list, kind: str, stamped: str, sources: dict, matched: int,
-              tagged: int, chiffon_records: int = 0, local_only: int = 0) -> dict:
+              tagged: int, chiffon_records: int = 0, local_only: int = 0,
+              dataid_max: int = DATAID_MAX_DEFAULT, skipped_by_dataid: int = 0) -> dict:
     return {
         "schema": 1,
         "runId": RUN_ID,
@@ -280,6 +282,8 @@ def build_doc(records: list, kind: str, stamped: str, sources: dict, matched: in
             "songsWithAliasesTag": sum(1 for r in records if r.get("aliasesTag")),
             "chiffonRecords": chiffon_records,
             "songsLocalOnly": local_only,
+            "dataidMax": dataid_max,
+            "skippedByDataid": skipped_by_dataid,
         },
         "songs": records,
     }
@@ -303,6 +307,8 @@ def main(argv=None) -> int:
     ap.add_argument("--aliases-lxns", metavar="PATH",
                     help=f"落雪别名表（默认 data/{ALIASES_LXNS_SCRIPT_DIR}/{ALIASES_LXNS_NAME}；不在就跳过）")
     ap.add_argument("-o", "--outdir", metavar="PATH", help="输出目录（默认 data/fusion/）")
+    ap.add_argument("--dataid-max", type=int, default=DATAID_MAX_DEFAULT,
+                    help="dataid 大于该值的整首跳过（默认 5000；自制谱截断）")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
     proofread_dir = Path(args.proofread_dir).resolve() if args.proofread_dir else data_root(PROOFREAD_SCRIPT_DIR)
@@ -315,6 +321,7 @@ def main(argv=None) -> int:
     aliases_lxns_path = (Path(args.aliases_lxns).resolve() if args.aliases_lxns
                          else data_root(ALIASES_LXNS_SCRIPT_DIR) / ALIASES_LXNS_NAME)
     outdir = Path(args.outdir).resolve() if args.outdir else data_root(SCRIPT_DIR_NAME)
+    dataid_max = int(args.dataid_max)
 
 
     print(BAR)
@@ -326,6 +333,7 @@ def main(argv=None) -> int:
           + ("" if aliases_chiffon_path.is_file() else "（这张表不在，跳过）"))
     print(f"  落雪别名  : {aliases_lxns_path}"
           + ("" if aliases_lxns_path.is_file() else "（这张表不在，跳过）"))
+    print(f"  dataid 截断: > {dataid_max} 的自制谱整首跳过")
     for family in FAMILY_ORDER:
         print(f"  {family:<8} {PROOFREAD_FILE[family]:<24} → {OUT_FILE[family]}")
     print(RULE)
@@ -358,10 +366,17 @@ def main(argv=None) -> int:
 
     out_by_family: dict[str, list] = {f: [] for f in FAMILY_ORDER}
     with_local = tagged = 0
+    skipped_by_dataid = 0
     local_only_by_family: dict[str, int] = {}
     for family in FAMILY_ORDER:
         seen = set()
         for song in proofread_by_family[family]:
+            try:
+                if int(song.get("dataid") or 0) > dataid_max:
+                    skipped_by_dataid += 1
+                    continue
+            except (TypeError, ValueError):
+                pass
             local_song = local_by_id.get(song.get("internalId"))
             if local_song is not None:
                 with_local += 1
@@ -375,17 +390,26 @@ def main(argv=None) -> int:
         extra = sorted((s for s in local_by_family[family]
                         if s.get("internalId") is not None and s["internalId"] not in seen),
                        key=lambda s: s["internalId"])
+        local_only_count = 0
         for local_song in extra:
+            try:
+                if int(local_song.get("dataid") or 0) > dataid_max:
+                    skipped_by_dataid += 1
+                    continue
+            except (TypeError, ValueError):
+                pass
             out_by_family[family].append(
                 fuse_song(synth_song_from_local(local_song), local_song, tags_by_sheet, aliases_by_id))
-        local_only_by_family[family] = len(extra)
+            local_only_count += 1
+        local_only_by_family[family] = local_only_count
 
     try:
         outdir.mkdir(parents=True, exist_ok=True)
         for family in FAMILY_ORDER:
             name, recs = OUT_FILE[family], out_by_family[family]
             payload = json.dumps(build_doc(recs, family, stamped, sources, with_local, tagged,
-                                           len(chiffon_by_id), local_only_by_family[family]),
+                                           len(chiffon_by_id), local_only_by_family[family],
+                                           dataid_max, skipped_by_dataid),
                                  ensure_ascii=False, indent=2) + "\n"
             tmp = outdir / (name + ".part")
             try:
@@ -403,6 +427,8 @@ def main(argv=None) -> int:
     print(f"输入 : Proofread {total:,} 首   本地曲库 {len(local_by_id):,} 首   "
           f"配上本地 {with_local:,} 首   标签表 {len(tags_by_sheet):,} 张谱   "
           f"别名表 {len(aliases_by_id):,} 首（其中第三方 {len(chiffon_by_id):,} 首）")
+    if skipped_by_dataid:
+        print(f"自制谱: 按 dataid > {dataid_max} 跳过 {skipped_by_dataid:,} 首")
     print(RULE)
     extra_line = "  ".join(f"{f} {n}" for f, n in local_only_by_family.items() if n)
     if extra_line:

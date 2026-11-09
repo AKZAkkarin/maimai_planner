@@ -218,6 +218,32 @@ if ($("user-cards")) {
     dlg.hidden = false;
     inp.focus();
   };
+  $("view-sync").onclick = async () => {
+    const btn = $("view-sync");
+    const note = $("view-new-note");
+    if (btn) btn.disabled = true;
+    if (note) note.textContent = "正在停止推歌脚本并从机台拉取存档…";
+    try {
+      const data = await api("/api/save/sync", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({}),
+      });
+      await loadUsers();
+      const id = data.user && data.user.id;
+      if (id) {
+        currentUser = id;
+        renderUserCards();
+        selectUser(id);
+      }
+      let msg = `已同步「${data.user && data.user.name || ""}」：${data.count || 0} 条成绩`;
+      if (data.stopped) msg = "推歌脚本已停止；" + msg;
+      if (note) note.textContent = data.relatedError ? `${msg}；分析：${data.relatedError}` : msg;
+    } catch (err) {
+      if (note) note.textContent = "同步失败：" + err.message;
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  };
   $("new-cancel").onclick = () => { const d = document.getElementById("newmodal"); if (d) d.hidden = true; };
   $("new-ok").onclick = async () => {
     const dlg = document.getElementById("newmodal");

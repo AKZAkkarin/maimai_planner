@@ -38,14 +38,14 @@ function showPage(name) {
   const names = pages.map((p) => p.dataset.page);
   const want = names.includes(name) ? name : names[0];
   pages.forEach((p) => { p.hidden = p.dataset.page !== want; });
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.page === want));
+  document.querySelectorAll(".tab[data-page]").forEach((t) => t.classList.toggle("active", t.dataset.page === want));
   if (location.hash.slice(1) !== want) history.replaceState(null, "", "#" + want);
   if (want === "songs") loadSongs();           // 进歌曲页就拉曲库（loadSongs 自己会缓存）
   if (want === "scores") loadStats();          // 进成绩页就激活统计（每次进入都算一遍）
   if (want === "pool") loadPool();             // 卡池预览：读 analysis.json
 }
 
-document.querySelectorAll(".tab").forEach((t) => { t.onclick = () => { showPage(t.dataset.page); if (t.dataset.page === "songs") loadSongs(); }; });
+document.querySelectorAll(".tab[data-page]").forEach((t) => { t.onclick = () => { showPage(t.dataset.page); if (t.dataset.page === "songs") loadSongs(); }; });
 window.addEventListener("hashchange", () => { showPage(location.hash.slice(1)); if (location.hash.slice(1) === "songs") loadSongs(); });
 
 /* 建库那块的链列表：自己有块的（别名、数据小更新）不在这里重复列 */

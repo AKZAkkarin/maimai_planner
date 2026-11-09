@@ -392,6 +392,7 @@ function renderPreview() {
   box.innerHTML = '<div class="assist-preview-slots">' + list.map((p, i) => {
     const actions = (i === 0 && ASTATE.running)
       ? '<button class="assist-small" data-act="assist-repush">重新推送</button>'
+        + '<button class="assist-small" data-act="assist-skip" data-index="0">跳过</button>'
       : ((i > 0 || !ASTATE.running)
         ? '<button class="assist-small" data-act="assist-redraw" data-index="' + i + '">重抽</button>'
           + '<button class="assist-small" data-act="assist-skip" data-index="' + i + '">跳过</button>'
@@ -408,11 +409,24 @@ function renderPreview() {
     if (song) renderCardPage(cardBox, [song], 1);
     else cardBox.innerHTML = '<p class="hint">这一首暂时没有谱面数据。</p>';
   });
+  // 卡片区可能在页面隐藏时渲染，clientWidth 为 0；等一帧后重新拟合，避免卡片按默认尺寸溢出。
+  requestAnimationFrame(() => {
+    box.querySelectorAll(".assist-preview-card").forEach((cardBox) => fitGrid(cardBox, 1));
+  });
 }
 
-window.addEventListener("resize", () => {
+function fitPreviewCards() {
   document.querySelectorAll("#assist-preview .assist-preview-card").forEach((box) => fitGrid(box, 1));
-});
+}
+
+window.addEventListener("resize", fitPreviewCards);
+
+if (window.ResizeObserver) {
+  const previewBox = document.getElementById("assist-preview");
+  if (previewBox) {
+    new ResizeObserver(() => fitPreviewCards()).observe(previewBox);
+  }
+}
 
 function renderStatus() {
   const el = document.getElementById("assist-status");
@@ -423,8 +437,6 @@ function renderStatus() {
   const start = document.getElementById("assist-start");
   const stop = document.getElementById("assist-stop");
   if (start) start.disabled = !!ASTATE.running || !(ASTATE.cards || []).length;
-  const scoreOnly = document.getElementById("assist-start-score");
-  if (scoreOnly) scoreOnly.disabled = !!ASTATE.running;
   if (stop) stop.disabled = !ASTATE.running;
   document.querySelectorAll('.tab[data-page="db"], .tab[data-page="scores"]').forEach((tab) => {
     tab.disabled = !!ASTATE.running;
@@ -441,9 +453,11 @@ function renderSettings() {
   const host = document.getElementById("assist-host");
   const mp = document.getElementById("assist-mod-port");
   const cp = document.getElementById("assist-callback-port");
+  const mm = document.getElementById("assist-miss-mode");
   if (host && document.activeElement !== host) host.value = s.host || "";
   if (mp && document.activeElement !== mp) mp.value = s.modPort || 8790;
   if (cp && document.activeElement !== cp) cp.value = s.callbackPort || 20010;
+  if (mm && document.activeElement !== mm) mm.value = s.missMode || "wait";
 }
 
 function renderLog(forceBottom) {
@@ -581,6 +595,9 @@ async function act(action, body = {}) {
       body: JSON.stringify({ user: currentUser, ...body }),
     });
     if (data.error) throw new Error(data.error);
+    if (data.bridgeOk === false) {
+      alert("预览已跳过，但 bridge 没有收到跳过信号：" + (data.bridgeError || "未知错误"));
+    }
     if (data.cards || data.preview) ASTATE = { ...ASTATE, ...data, log: data.log || ASTATE.log };
     renderAll();
     if (action === "redraw" && data.empty && !body.force) {
@@ -615,7 +632,7 @@ function startPoll() {
         renderLog();
         if (was !== ASTATE.running) renderTable();
       }
-      // 分数回传后第三首是后台补的；只在脚本运行时轮询。
+      // 存档由 bridge 轮询 mod /save 后同步；运行时轮询最新状态。
       // 预览变化立即拉带数量的状态；平时每 5 个 tick 刷新一次卡池数量。
       if (data.running) {
         const state = await api("/api/assistant/state?user=" + encodeURIComponent(currentUser));
@@ -637,6 +654,14 @@ function startPoll() {
 }
 
 function bind() {
+  const saveSettingsBtn = document.getElementById("assist-save-global");
+  if (saveSettingsBtn) {
+    saveSettingsBtn.onclick = async () => {
+      saveSettingsBtn.disabled = true;
+      await saveGlobalSettings();
+      saveSettingsBtn.disabled = false;
+    };
+  }
   document.addEventListener("click", async (e) => {
     const btn = e.target.closest("[data-act]");
     if (!btn) return;
@@ -667,11 +692,7 @@ function bind() {
     } else if (actName === "assist-repush") {
       await act("repush");
     } else if (actName === "assist-start") {
-      await saveGlobalSettings();
-      await act("start");
-    } else if (actName === "assist-start-score") {
-      await saveGlobalSettings();
-      await act("start", { mode: "score" });
+      if (await saveGlobalSettings()) await act("start");
     } else if (actName === "assist-stop") {
       await act("stop");
     }
@@ -694,13 +715,21 @@ async function saveGlobalSettings() {
   const host = document.getElementById("assist-host").value.trim();
   const modPort = Number(document.getElementById("assist-mod-port").value) || 8790;
   const callbackPort = Number(document.getElementById("assist-callback-port").value) || 20010;
+  const missMode = document.getElementById("assist-miss-mode").value || "wait";
+  const note = document.getElementById("assist-settings-note");
+  if (note) note.textContent = "保存中…";
   try {
     const data = await api("/api/assistant/settings", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ host, modPort, callbackPort }),
+      body: JSON.stringify({ host, modPort, callbackPort, missMode }),
     });
     if (ASTATE) ASTATE.settings = data.settings;
-  } catch (_) { /* ignore */ }
+    if (note) note.textContent = "设置已保存";
+    return true;
+  } catch (err) {
+    if (note) note.textContent = "保存失败：" + err.message;
+    return false;
+  }
 }
 
 async function loadPlates() {
