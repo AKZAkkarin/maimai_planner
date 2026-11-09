@@ -1,0 +1,1277 @@
+/* 打歌计划器 · 建立数据库页 */
+
+:root {
+  --bg: #12141a; --card: #1b1e27; --line: #2c3140;
+  --fg: #e6e8ef; --dim: #98a0b3; --ok: #4ac48a; --bad: #e2686a; --run: #6aa9ff;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0; padding: 24px 16px 64px;
+  background: var(--bg); color: var(--fg);
+  font: 15px/1.6 "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+main { max-width: 100%; margin: 0 auto; }   /* v25：所有页都按窗口宽度适配（原来卡在 1180） */
+h1 { margin: 0 0 4px; font-size: 22px; }
+h2 { margin: 0 0 12px; font-size: 15px; color: var(--dim); font-weight: 600; }
+.hint { margin: 0 0 20px; color: var(--dim); font-size: 13px; }
+code { background: #000; padding: 1px 5px; border-radius: 4px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: 10px; padding: 16px; margin-bottom: 16px;
+}
+
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+button {
+  background: #262b38; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer;
+}
+button:hover:not(:disabled) { background: #2f3646; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: #2b4b7d; border-color: #3a67a8; }
+button.primary:hover:not(:disabled) { background: #345a94; }
+
+input[type="text"] {
+  flex: 1; min-width: 240px; background: #0e1015; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; font-size: 13px;
+}
+
+/* 数字输入框不显示上下微调按钮 */
+input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.note { margin: 10px 0 0; color: var(--dim); font-size: 13px; min-height: 20px; }
+
+.chains { display: grid; gap: 8px; margin-bottom: 14px; }
+label.chain {
+  display: flex; gap: 10px; align-items: flex-start;
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer;
+}
+label.chain:has(input:checked) { border-color: #3a67a8; background: #1d2534; }
+label.chain small { color: var(--dim); }
+
+.steps { list-style: none; margin: 0; padding: 0; }
+.steps li {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 7px 10px; border-radius: 6px; border: 1px solid transparent;
+}
+.steps li small { color: var(--dim); margin-left: auto; }
+.steps .mark { width: 16px; text-align: center; }
+.steps li.running { border-color: #2b4b7d; background: #1d2534; }
+.steps li.running .mark { color: var(--run); }
+.steps li.done .mark { color: var(--ok); }
+.steps li.failed { border-color: #5a2b2d; background: #2a1c1e; }
+.steps li.failed .mark { color: var(--bad); }
+.steps li.idle { color: var(--dim); }
+
+.result { margin: 12px 0 0; font-size: 14px; }
+.result.ok { color: var(--ok); }
+.result.bad { color: var(--bad); }
+.result.running { color: var(--run); }
+
+details { margin-top: 14px; }
+summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+pre {
+  max-height: 320px; overflow: auto; background: #0e1015; border: 1px solid var(--line);
+  border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+}
+
+/* 可折叠的「建立 / 更新数据库」块 */
+details.card.box { padding: 0; }
+details.card.box > summary { padding: 14px 16px; color: var(--fg); font-size: 15px; }
+details.card.box[open] > summary { border-bottom: 1px solid var(--line); }
+details.card.box > summary small { color: var(--dim); font-weight: 400; margin-left: 6px; font-size: 12px; }
+details.card.box .inner { padding: 14px 16px 0; }
+details.card.box .inner:last-child { padding-bottom: 16px; }
+details.card.box .inner h2 { margin-top: 0; }
+
+/* 页面切换的 tab 条 */
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
+.tab {
+  background: var(--card); color: var(--dim); border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px 16px; font-size: 14px; cursor: pointer;
+}
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--fg); background: #2b4b7d; border-color: #3a67a8; }
+section.page[hidden] { display: none; }
+
+/* 左右两栏：左边功能、右边运行信息（窄屏自动叠成一列） */
+.grid {
+  display: grid; gap: 16px; align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+}
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.col-funcs { min-width: 0; }
+/* 右栏跟着视口停住，不随页面滚走；内容比屏幕高时自己滚，别顶出屏幕 */
+aside.side {
+  min-width: 0; margin-bottom: 16px;
+  position: sticky; top: 16px;
+  max-height: calc(100vh - 32px); overflow: auto;
+}
+aside.side h2 { margin-bottom: 10px; }
+aside.side .steps li.idle { padding-left: 0; }
+
+/* ── 成绩页 ── */
+.avatar { width: 88px; height: 88px; border-radius: 12px; object-fit: cover; border: 1px solid currentColor; opacity: .95; }
+.stat { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px dashed currentColor; opacity: .92; }
+.stat b { font-variant-numeric: tabular-nums; }
+.stat-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.stat-table th, .stat-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid currentColor; }
+.stat-table th { font-weight: 500; opacity: .7; }
+
+/* ── 头像裁剪 ── */
+.cropbox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.62); z-index: 50; }
+.cropbox[hidden] { display: none; }
+.crop-card { background: #171b24; color: inherit; border-radius: 14px; padding: 18px 20px;
+  max-width: 92vw; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.crop-stage { position: relative; width: 320px; height: 320px; overflow: hidden;
+  border-radius: 10px; background: #0e1117; cursor: grab; touch-action: none; }
+.crop-stage:active { cursor: grabbing; }
+.crop-stage img { position: absolute; left: 0; top: 0; max-width: none; user-select: none;
+  -webkit-user-drag: none; }
+.crop-frame { position: absolute; inset: 0; border: 2px solid #7aa2ff; border-radius: 10px;
+  pointer-events: none; box-shadow: inset 0 0 0 9999px rgba(0,0,0,.35); }
+
+/* ── 字体：大项粗体、小项圆体 ── */
+@font-face { font-family: "MaiRound"; src: url("/fonts/round") format("truetype"); }
+@font-face { font-family: "MaiBold"; src: url("/fonts/bold") format("truetype"); }
+h1, h2, summary b, .big, .nowtext b { font-family: "MaiBold", system-ui, sans-serif; font-weight: 700; }
+.note, .hint, .stat-label, .usercard .ucname, .usercard .ucmeta, td, th { font-family: "MaiRound", system-ui, sans-serif; }
+
+/* ── 成绩页：用户卡片 ── */
+.bar { align-items: center; gap: 10px; margin-bottom: 12px; }
+.usercards { display: flex; gap: 10px; overflow-x: auto; padding: 6px 2px 14px; }
+.usercard { flex: 0 0 auto; width: 148px; padding: 10px; border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.10);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.usercard:hover { border-color: rgba(122,162,255,.55); }
+.usercard.selected { transform: translateY(-10px); border-color: #7aa2ff;
+  box-shadow: 0 10px 26px rgba(122,162,255,.35); }
+.usercard .ucavatar { width: 100%; aspect-ratio: 1; border-radius: 10px; object-fit: cover; display: block; }
+.usercard .ucavatar { cursor: grab; touch-action: none; -webkit-user-drag: none; user-select: none; }
+.usercard.delmode .ucavatar { cursor: default; }
+.usercard .ucname { margin-top: 8px; font-size: 14px; }
+.usercard .ucmeta { font-size: 12px; opacity: .72; line-height: 1.5; }
+.nowcard { display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin-bottom: 14px;
+  border-radius: 12px; background: rgba(122,162,255,.10); border: 1px solid rgba(122,162,255,.35); }
+.nowcard[hidden] { display: none; }
+.nowtext { display: flex; flex-direction: column; gap: 2px; }
+
+/* ── 成绩页：统计块 ── */
+.rating { width: 100%; max-width: 664px; height: auto; display: block; border-radius: 8px; }
+.versionimg { height: 34px; width: auto; }
+.big { font-size: 30px; margin: 6px 0 0; font-variant-numeric: tabular-nums; }
+.statimg { height: 30px; width: auto; display: block; opacity: .95; }
+.rankgrid { display: flex; flex-direction: column; gap: 8px; }
+.rankrow { display: flex; align-items: center; gap: 10px; }
+.rankrow img { height: 26px; width: auto; }
+.rankrow b { font-family: "MaiBold", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+
+/* ── 成绩页：大卡（当前用户） ── */
+.bigcard { display: grid; grid-template-columns: 168px minmax(360px, 1fr) minmax(300px, 1fr);
+  gap: 18px; padding: 16px 18px; margin: 4px 0 18px; border-radius: 14px;
+  background: rgba(122,162,255,.08); border: 1px solid rgba(122,162,255,.32); }
+.bigcard[hidden] { display: none; }
+.bc-left { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.bc-left .avatar.big { width: 128px; height: 128px; }
+.bcname { font-size: 17px; }
+.bc-mid { display: flex; flex-direction: column; gap: 10px; }
+.bc-right { display: flex; flex-direction: column; gap: 10px; }
+.playedline { display: flex; align-items: baseline; gap: 10px; }
+.playedline b { font-size: 26px; font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 13px; opacity: .78; }
+.badges { display: flex; flex-wrap: wrap; gap: 10px 14px; }
+.badge { display: flex; align-items: center; gap: 6px; }
+.badge img { height: 22px; width: auto; }
+.badge b { font-family: "MaiBold", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.rankgrid { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.rankrow { display: flex; align-items: center; gap: 6px; }
+.rankrow img { height: 22px; width: auto; }
+.rankrow b { font-family: "MaiBold", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+
+/* ── 版本：图形化选择 ── */
+.versionbtn { flex: 0 0 auto; padding: 3px 4px; border-radius: 8px; cursor: pointer;
+  background: transparent; border: 1px solid transparent; opacity: .55; transition: opacity .15s, border-color .15s; }
+.versionbtn img { height: 26px; width: auto; display: block; }
+.versionbtn:hover { opacity: .9; }
+.versionbtn.selected { opacity: 1; border-color: #7aa2ff; background: rgba(122,162,255,.16); }
+
+/* ── 成绩页 v5：rating 缩小、计数排一行、版本弹窗 ── */
+.rating { max-width: 380px; }
+.badges { flex-wrap: nowrap; overflow-x: auto; }
+.rankgrid { flex-wrap: nowrap; overflow-x: auto; }
+.verbox { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.62); z-index: 60; }
+.verbox[hidden] { display: none; }
+.vercard { background: #171b24; border-radius: 14px; padding: 16px 18px; max-width: min(92vw, 900px);
+  max-height: 80vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+.verhead { justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.vergrid { display: flex; flex-wrap: wrap; gap: 8px; }
+.vergrid button { padding: 4px; border-radius: 8px; cursor: pointer; background: transparent;
+  border: 1px solid transparent; opacity: .7; }
+.vergrid button:hover { opacity: 1; }
+.vergrid button.selected { opacity: 1; border-color: #7aa2ff; background: rgba(122,162,255,.16); }
+.vergrid img { height: 30px; width: auto; display: block; }
+
+/* ── 成绩页 v5b：六档一行、五档一行、版本按钮不铺满 ── */
+.badges { flex-direction: row; flex-wrap: nowrap; gap: 8px 12px; }
+.badge img { height: 18px; }
+.badge b { font-size: 14px; }
+.rankgrid { flex-direction: row; flex-wrap: nowrap; gap: 6px 12px; }
+.rankrow img { height: 20px; }
+.rankrow b { font-size: 14px; }
+
+/* ── 成绩页 v6：统计两框四行、版本显示与按钮分开 ── */
+.statbox { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.16); background: rgba(255,255,255,.03); }
+.sgrid { display: grid; grid-template-columns: repeat(6, minmax(46px, 1fr)); gap: 4px 10px;
+  align-items: center; justify-items: center; }
+.sgrid img { height: 34px; width: auto; }
+.sgrid.values b { font-family: "MaiBold", system-ui, sans-serif; font-size: 19px;
+  font-variant-numeric: tabular-nums; }
+.sgrid-sep { height: 1px; background: rgba(255,255,255,.12); margin: 2px 0; }
+.verline { display: flex; align-items: center; gap: 10px; }
+.versionimg { height: 46px; width: auto; }
+.verline button { padding: 4px 10px; border-radius: 8px; }
+.vergrid img { height: 44px; }
+
+/* ── 成绩页 v7：rating 更小、版本更大、小卡下移、头像放大、用户名在 rating 上方 ── */
+.rating { max-width: 300px; }
+.versionimg { height: 76px; }
+.bcname { font-size: 20px; margin-bottom: 2px; }
+.bc-left .avatar.big { width: 160px; height: 160px; }
+.usercards { margin-top: 10px; padding-top: 14px; }
+.vergrid img { height: 64px; }
+
+/* ── 成绩页 v8：头像更大、两个按钮同尺寸、换头像底对齐统计于、版本与按钮一排 ── */
+.bigcard { align-items: stretch; }
+.bc-left { justify-content: space-between; }
+.bc-left .avatar.big { width: 200px; height: 200px; }
+.btn-same { min-width: 104px; height: 34px; padding: 0 12px; border-radius: 9px; }
+.verline { gap: 12px; margin-top: 6px; }
+.versionimg { height: 84px; }
+
+/* ── 成绩页 v9：按用户排版（三栏 19%:28%:38%，头像 220，rating 铺满中栏，版本 ~96 高） ── */
+.bigcard { grid-template-columns: 220px minmax(0, 1.35fr) minmax(0, 1.85fr); gap: 26px; padding: 18px 22px; }
+.bc-left .avatar.big { width: 220px; height: 220px; }
+.bcname { font-size: 23px; }
+.rating { max-width: 100%; }
+.versionimg { height: 96px; }
+.playedline { gap: 12px; }
+.playedline b { font-size: 30px; }
+.statbox { padding: 14px 16px; gap: 10px; }
+.sgrid { grid-template-columns: repeat(6, minmax(52px, 1fr)); gap: 6px 12px; }
+.sgrid img { height: 30px; }
+.sgrid.values b { font-size: 23px; color: #fff; }
+#rank-icons img { height: 34px; }
+
+/* v9b：左栏撑满，让「换头像」底部与「统计于」对齐 */
+.bc-left { height: 100%; }
+
+/* v9c：左栏只剩头像+按钮，按钮底与「统计于」齐；note 统一不留大空隙 */
+.bc-left { position: relative; }
+#view-avatar-note { margin: 2px 0 0; font-size: 12px; min-height: 16px; }
+#view-stats-at { margin: 0; }
+
+/* v10：按钮放大一点，左栏按钮上下留白一致 */
+.btn-same { min-width: 126px; height: 38px; font-size: 15px; border-radius: 10px; }
+.bc-left { justify-content: flex-start; gap: 14px; padding-bottom: 14px; }
+
+/* v10b：左栏按钮上下留白严格相等（剩余空间对半分到上下） */
+.bc-left { justify-content: flex-start; gap: 19px; padding-bottom: 0; }
+
+/* v11：左栏按卡片外沿对齐 —— 头像底→按钮顶 与 按钮底→卡片外底 都是 19px */
+.bc-left { height: calc(100% - 17px); justify-content: flex-start; gap: 19px; padding-bottom: 0; }
+
+/* v11b：左栏伸进卡片下内边距 16px，让按钮上下两个间隔都 ≈19px（按卡片外沿算） */
+.bc-left { height: auto; align-self: stretch; margin-bottom: -16px; gap: 19px; justify-content: flex-start; }
+
+/* v11c：头像贴顶，按钮在剩余空间里居中 → 头像底→按钮顶 与 按钮底→卡片底 相等 */
+.bc-left { justify-content: flex-start; gap: 0; margin-bottom: 0; height: auto; align-self: stretch; }
+#view-avatar-pick { margin-top: auto; margin-bottom: auto; }
+
+/* v11d：卡片下内边距交给右栏，左栏直接触到卡片底 → 按钮上 19 / 下 18（差 1px 取整） */
+.bigcard { padding-bottom: 0; }
+.bc-right { padding-bottom: 18px; }
+
+/* 选择器打开期间挡住页面操作 */
+.pickmask { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center;
+  justify-content: center; background: rgba(0,0,0,.55); font-size: 20px;
+  font-family: "MaiBold", system-ui, sans-serif; }
+.pickmask[hidden] { display: none; }
+
+/* 裁剪界面放大 */
+.crop-stage { width: 520px; height: 520px; }
+.crop-card { max-width: min(96vw, 640px); }
+.crop-stage { width: min(520px, 86vw); height: min(520px, 86vw); }
+
+/* ── 歌曲浏览卡片 ── */
+.songcards { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-start; }
+.songcard { display: flex; gap: 14px; }
+.sc-base { position: relative; width: 284px; height: 412px; background-size: 284px 412px; background-repeat: no-repeat; }
+.sc-jacket { position: absolute; left: 42px; top: 70px; width: 200px; height: 200px; border-radius: 4px; object-fit: cover; }
+.sc-title { position: absolute; left: 16px; right: 16px; top: 306px; font-size: 15px; line-height: 1.25;
+  color: #fff; font-family: "MaiBold", system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-artist { position: absolute; left: 16px; right: 16px; top: 356px; font-size: 13px; color: #123; opacity: .85; }
+.sc-rows { display: flex; flex-direction: column; gap: 10px; min-width: 260px; }
+.sc-type { height: 30px; width: auto; align-self: flex-end; }
+.sc-row { display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border-radius: 999px;
+  background: linear-gradient(90deg, #7ee06a, #3fbf42); box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
+.sc-btn { width: 44px; height: 44px; }
+.sc-lv { font-family: "MaiBold", system-ui, sans-serif; font-size: 20px; color: #fff; min-width: 46px; }
+.sc-dn { font-size: 13px; color: #0d3b12; opacity: .85; }
+.sc-meta { font-size: 12px; opacity: .6; }
+
+
+/* 歌曲卡片微调 */
+.sc-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-row { padding: 3px 14px 3px 3px; min-width: 320px; }
+.sc-btn { width: 52px; height: 52px; }
+.sc-dn { text-transform: uppercase; letter-spacing: .5px; }
+.sc-lv { font-size: 22px; }
+
+/* ── 歌曲卡片 v2（贴图为主） ── */
+.sc-row { position: relative; display: flex; align-items: center; gap: 6px; height: 76px; padding: 0 18px;
+  border-style: solid; border-width: 34px; border-image: url("/ui/musicLib/Btn_BAS.png") 34 fill stretch;
+  background: none; box-shadow: none; min-width: 0; margin: 0 0 10px; }
+.sc-row:last-child { margin-bottom: 0; }
+.gly { display: inline-block; background-repeat: no-repeat; flex: 0 0 auto; }
+.sc-lv { display: inline-flex; align-items: center; gap: 2px; margin-right: 8px; }
+.sc-icon { height: 44px; width: auto; }
+.sc-dxs { display: inline-flex; align-items: center; gap: 2px; }
+.slot { display: inline-block; width: 52px; height: 44px; border-radius: 8px;
+  background: #fff; opacity: .92; }
+.sc-type { height: 34px; width: auto; align-self: flex-end; margin-bottom: 6px; }
+.sc-rows { display: flex; flex-direction: column; min-width: 480px; justify-content: flex-start; }
+/* v2 修正：白空位不要被拉长 */
+.slot { flex: 0 0 auto; width: 46px; height: 42px; }
+.sc-rows { min-width: 470px; }
+.sc-row { gap: 5px; }
+/* v3：行贴住卡片、徽标左上、内容均分 */
+.songcard { gap: 0; }
+.sc-rows { min-width: 430px; gap: 0; }
+.sc-row { margin: 0 0 8px; justify-content: space-between; padding: 0 16px; }
+.sc-type { align-self: flex-start; margin: 0 0 8px; height: 30px; }
+.sc-row { justify-content: flex-start; gap: 8px; }
+.sc-row .slot:first-of-type { margin-left: 4px; }
+/* ── 歌曲卡片 v4 ── */
+.songcard { gap: 0; align-items: flex-start; }
+.sc-base { position: relative; width: 284px; height: 412px; background-size: 284px 412px; }
+.sc-jacket { position: absolute; left: 42px; top: 74px; width: 200px; height: 200px; object-fit: cover; }
+.sc-title { position: absolute; left: 10px; right: 10px; top: 300px; height: 46px; display: flex;
+  align-items: center; justify-content: center; overflow: hidden; }
+.sc-title span { white-space: nowrap; font-family: "MaiBold", system-ui, sans-serif; font-size: 17px; color: #fff; }
+.sc-artist { position: absolute; left: 10px; right: 10px; top: 352px; height: 34px; display: flex;
+  align-items: center; justify-content: center; overflow: hidden; }
+.sc-artist span { white-space: nowrap; font-size: 13px; color: #123; }
+.sc-rows { display: flex; flex-direction: column; gap: 8px; margin-left: -26px; padding-top: 84px; }
+.sc-row { box-sizing: border-box; height: 68px; border-style: solid; border-width: 0 40px;
+  border-image-slice: 0 40 fill; border-image-repeat: stretch;
+  display: grid; grid-template-columns: 116px 74px 74px 66px 66px; align-items: center; justify-items: center; }
+.sc-type-row { border-image: none; background: #fff; border-radius: 12px; width: 300px;
+  grid-template-columns: 1fr; justify-items: start; padding-left: 18px; box-sizing: border-box; }
+.sc-type { height: 40px; width: auto; }
+.f-lv { display: inline-flex; align-items: center; gap: 2px; }
+.lvnum { display: inline-flex; align-items: center; }
+.lvnum .gly { margin-left: -9px; }
+.lvnum .gly:first-child { margin-left: 2px; }
+.fslot { position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 62px; height: 50px; border-radius: 8px; background: #fff; box-sizing: border-box; }
+.fslot img { max-height: 46px; max-width: 60px; width: auto; height: auto; }
+.fslot .gly.plus { position: absolute; left: -6px; }
+
+/* v5：药丸三层背景 + 类型行与行同宽 */
+.sc-row { border: none; border-radius: 0; background-image: var(--btn), var(--btn), var(--btn);
+  background-position: center center, left center, right center;
+  background-size: 100% 100%, 40px 100%, 40px 100%; background-repeat: no-repeat; }
+.sc-type-row { width: 476px; }
+
+/* v6：按示意图量出来的尺寸（原生 1:1） */
+.sc-rows { padding-top: 5px; margin-left: 0; gap: 15px; }
+.sc-row { width: 336px; height: 55px; padding: 0 14px; gap: 0;
+  grid-template-columns: 92px 54px 54px 54px 54px; }
+.sc-type-row { width: 336px; height: 30px; padding: 0 12px; border-radius: 8px; }
+.sc-type { height: 20px; }
+.fslot { width: 48px; height: 40px; }
+.fslot img { max-height: 36px; max-width: 46px; }
+
+/* ── 歌曲卡片 v6 ── */
+.songcard { display: block !important; }
+.songwrap { width: 744px; height: 494px; }
+.songunit { position: relative; width: 620px; height: 412px; transform: scale(1.2); transform-origin: top left; }
+.sc-base { position: absolute; left: 0; top: 0; width: 284px; height: 412px; background-size: 284px 412px; background-repeat: no-repeat; }
+.sc-jacket { left: 42px; top: 74px; width: 200px; height: 200px; object-fit: cover; }
+.sc-title { position: absolute; left: 10px; right: 10px; top: 300px; height: 52px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sc-artist { position: absolute; left: 10px; right: 10px; top: 354px; height: 36px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.sc-title span { font-family: "MaiBold", system-ui, sans-serif; font-size: 16px; color: #fff; white-space: nowrap; display: inline-block; }
+.sc-artist span { font-size: 12px; color: #123; white-space: nowrap; display: inline-block; }
+.marq { animation: marq 9s linear infinite; }
+.marq i { display: inline-block; width: 64px; }
+@keyframes marq { from { transform: translateX(0); } to { transform: translateX(calc(-50% - 32px)); } }
+.sc-rows { position: absolute !important; left: 278px !important; top: 15px !important; width: 336px !important;
+  margin: 0 !important; padding: 0 !important; display: flex; flex-direction: column; gap: 12px; }
+.sc-type-row { width: 336px !important; height: 55px; box-sizing: border-box; padding: 5px 14px; background: #fff;
+  border-radius: 12px; margin-bottom: -10px !important; display: flex; align-items: center; }
+.sc-type { height: 44px; width: auto; }
+.sc-row { width: 336px !important; height: 55px !important; margin: 0 !important; padding: 0 !important;
+  border: none !important; display: grid; grid-template-columns: 84px 56px 62px 56px 56px;
+  align-items: center; justify-items: center; background-repeat: no-repeat; background-size: 336px 55px; }
+.f-lv { display: inline-flex; align-items: center; gap: 4px; }
+.lvnum { display: inline-flex; align-items: center; gap: 1px; }
+.lvnum .gly { margin-left: 0 !important; }
+.f-rank, .f-dx, .f-combo, .f-sync { display: inline-flex; align-items: center; justify-content: center; }
+.fslot { display: inline-flex; align-items: center; justify-content: center; width: 46px; height: 42px;
+  background: #fff; border-radius: 6px; gap: 1px; }
+.sc-icon { height: 38px; width: auto; }
+.sc-icon.sm { height: 30px; }
+
+/* v6b：第一列加宽，其他对齐 */
+.sc-row { grid-template-columns: 108px 48px 60px 48px 48px !important; }
+
+/* ── 歌曲卡片 v7 ── */
+.sc-base { z-index: 2; }
+.sc-jacket { border-radius: 0; }
+.sc-rows { left: 256px !important; top: 0 !important; height: 412px; z-index: 1;
+  justify-content: space-between; gap: 0; }
+.sc-type-row { background: none !important; padding: 0 !important; margin: 0 !important; height: 55px;
+  display: flex; align-items: center; justify-content: flex-start; border-radius: 0; }
+.sc-type { height: 55px; width: auto; }
+.sc-row { grid-template-columns: 96px 100px 50px 42px 42px !important; }
+.f-lv { align-items: flex-end; }
+.lvnum { align-items: flex-end; }
+.lvpad { display: inline-block; width: 22px; }
+.rslot { display: inline-flex; align-items: center; justify-content: center; width: 96px; height: 46px;
+  background: #fff; border-radius: 14px; }
+.sc-icon.rk { height: 38px; }
+.fslot.dxslot { width: 46px; height: 26px; border-radius: 8px; }
+.sc-icon.dx { height: 22px; }
+.fslot.circle { width: 44px; height: 44px; border-radius: 50%; }
+
+/* v7b：清掉 v6 的类型行负边距 */
+.sc-type-row { margin-bottom: 0 !important; }
+
+/* ── 歌曲卡片 v8：左端直切藏进 base、槽位留白、等间距 ── */
+.sc-rows { left: 268px !important; height: 412px !important; justify-content: space-between !important; }
+.sc-type-row { margin: 0 !important; }
+.sc-row { margin: 0 !important; padding: 0 0 0 20px !important;
+  grid-template-columns: 84px 96px 48px 42px 42px !important; }
+.rslot { width: 96px; height: 48px; border-radius: 16px; }
+.sc-icon.rk { height: 36px; }
+.fslot.dxslot { width: 48px; height: 28px; border-radius: 8px; gap: 3px; }
+.sc-icon.dx { height: 20px; }
+.fslot.circle { width: 46px; height: 46px; border-radius: 50%; }
+.fslot.circle .sc-icon { height: 36px; }
+
+/* ── 歌曲卡片 v9：行埋进 base 墨迹右缘(263)下方 28px；白底=贴图同尺寸；无多余留白 ── */
+.sc-rows { left: 235px !important; top: 0 !important; height: 412px !important; justify-content: space-between !important; }
+.sc-type-row { margin: 0 !important; padding: 0 !important; background: none !important; }
+.sc-type { height: 55px; width: auto; }
+.sc-row { margin: 0 !important; padding: 0 0 0 26px !important;
+  grid-template-columns: 82px 96px 48px 42px 42px !important; }
+.rslot { width: 95px; height: 38px; border-radius: 12px; }
+.sc-icon.rk { height: 38px; }
+.fslot.dxslot { width: 40px; height: 24px; border-radius: 8px; }
+.sc-icon.dx { height: 24px; }
+.fslot.circle { width: 40px; height: 40px; border-radius: 50%; }
+.fslot.circle .sc-icon { height: 40px; }
+
+/* v9b：圆形槽里的图标必须正好盖满白底 */
+.fslot.circle .sc-icon { height: 40px !important; width: auto !important; }
+
+/* v9c：圆形图标不受 .fslot img 的 max-height 36 限制 */
+.fslot.circle .sc-icon { max-height: none !important; }
+
+/* ── 歌曲卡片 v10：行加宽到 380、内容让出 base 墨迹、白底之间留间隔、不再互相挤 ── */
+.sc-rows { left: 245px !important; top: 0 !important; height: 412px !important; justify-content: space-between !important; }
+.sc-row { width: 380px !important; height: 55px !important; padding: 0 0 0 22px !important;
+  grid-template-columns: 96px 108px 52px 46px 46px !important;
+  background-size: 380px 55px !important; }
+.sc-type-row { width: 380px !important; padding: 0 0 0 22px !important; }
+.rslot { width: 95px; height: 38px; border-radius: 12px; }
+.sc-icon.rk { height: 38px; }
+.fslot.dxslot { width: 40px; height: 24px; border-radius: 8px; }
+.sc-icon.dx { height: 24px; }
+.fslot.circle { width: 40px; height: 40px; border-radius: 50%; }
+.fslot.circle .sc-icon { height: 40px !important; max-height: none !important; }
+
+/* v10b：type 图和药丸一样埋进 base 下方 */
+.sc-type-row { padding-left: 0 !important; }
+
+/* ── 歌曲卡片 v11：行内五件东西等距居中、上下居中；type+btn 一组等间距 ── */
+.sc-row { display: flex !important; justify-content: space-between; align-items: center;
+  padding: 0 14px 0 22px !important; grid-template-columns: none !important; }
+.lvpad { width: 18px; }
+.f-lv, .f-rank, .f-dx, .f-combo, .f-sync { display: inline-flex; align-items: center; justify-content: center; }
+.sc-rows { justify-content: space-between !important; }
+
+/* v11b：定数按固定数位格排（高位留空、右对齐），小数点各列对齐 */
+.f-lv { gap: 4px; }
+.lvfield { display: inline-flex; align-items: flex-end; }
+.lvcell { display: inline-flex; justify-content: flex-end; align-items: flex-end; width: 19px; }
+.lvcell.dot { width: 8px; }
+
+/* ── 歌曲卡片 v12：白底=贴图墨迹尺寸（图标盖住白底、透明边在外面） ── */
+.sc-row { justify-content: space-evenly !important; }
+.rslot { width: 84px; height: 32px; border-radius: 10px; }
+.sc-icon.rk { height: 38px; }
+.fslot.dxslot { width: 32px; height: 14px; border-radius: 6px; }
+.sc-icon.dx { height: 24px; }
+.fslot.circle { width: 30px; height: 30px; border-radius: 50%; }
+.fslot.circle .sc-icon { height: 40px !important; max-height: none !important; }
+
+/* ── 歌曲卡片 v13：行组对齐 base 的「可见」上下边（墨迹 y56..391，不是画布 0..412）──
+   Base_DX.png 的 284×412 画布里卡片只占 y56..391；v12 按画布 0..412 排，
+   DX 徽标浮在卡片上方 56、末行悬在卡片下方 21。这里把行组整体 0.813 缩放
+   （=335/412），top=56 → 徽标上边=卡片可见上边、末行下边=卡片可见下边，
+   行内所有比例（白底/图标/数字）保持不变。 */
+.sc-rows { top: 56px !important; height: 412px !important; width: 380px !important; min-width: 0 !important;
+  transform: scale(0.81311); transform-origin: top left; }
+
+/* v13b：曲名/作者只在卡片可见范围内裁（画布左右各有 20px 透明边，原来 10px 的框会漏到卡外）
+   超长时左对齐从头发车，不再居中溢出从中间开始滚 */
+.sc-title, .sc-artist { left: 26px !important; right: 26px !important; }
+.sc-title.marqbox, .sc-artist.marqbox { justify-content: flex-start !important; }
+
+/* ── 歌曲卡片 v14：定数/ LV 放大、LV 与数字底对齐 ──
+   LV_EM=31 / DIGIT_EM=28 见 app.js（g6 的 h 是 52 单位字形 em，不是墨迹高；
+   LV 墨迹=29/52·EM、数字墨迹=53/52·EM，31/28 时 LV≈数字的 60%）。 */
+.f-lv { gap: 5px; align-items: flex-end !important; }
+
+/* ── 歌曲卡片 v16：定数左贴 LV、十位留空压到最小；整行内容按「数字 50% 高」重对齐 ──
+   .lvcell 宽度由 levelHtml 按字形墨迹宽内联写死（数字互相贴紧），
+   十位没有数字时 .lvcell.blank 宽 0，只靠 .lvfield 的 gap 1.5 留一个数字间距；
+   .lvfield 定宽 → 一位数/两位数时 rank·dx·连击·同步那一列的 x 都不动。 */
+.lvfield { width: 74.6px; justify-content: flex-start; gap: 1.5px; }
+.lvcell { width: auto; justify-content: flex-start; }
+.lvcell.blank { width: 0; }
+.sc-row { padding-top: 6px !important; }   /* 原来是 .f-lv 单独 top:3，现在整行一起下移 3：
+                                              内容盒(6..55)中心=30.5=数字盒(16.5..44.5)中心 */
+
+/* ── 歌曲卡片 v17 ──────────────────────────────────────────────────────────── */
+/* 1) 定数右对齐到同一条右边缘，并整体往左收：定宽 66 + flex-end。
+      13.7 这类两位数 = 最宽的内容，贴住左端（LV 间距≈3）；
+      2.0/6.5/9.5 这类一位数右对齐到同一右边缘（LV 间距≈17）。
+      注意 .lvcell 必须 flex:0 0 auto，否则内容比 66 宽时会被 flex 压缩变形。 */
+.lvfield { width: 66px; justify-content: flex-end; }
+.lvcell { flex: 0 0 auto; }
+/* 2) dx 评分贴图：原图 40×24、墨迹只有 31×13（且墨迹中心比画布中心高 0.5 单位），
+      24 高时盖不满 32×14 的白底。放到 27 高（墨迹 34.9×14.6）+ 下移 0.56，四边吃满不留白。 */
+.sc-icon.dx { height: 27px; position: relative; top: 0.56px; }
+/* 3) 白底做成「凹槽」：上方内阴影压暗、下方加一条高光，视觉上凹下去 */
+.rslot, .fslot.dxslot, .fslot.circle {
+  background: linear-gradient(180deg, #dcdcdc 0%, #fdfdfd 62%, #ffffff 100%);
+  box-shadow: inset 0 3px 4px rgba(0, 0, 0, .55),
+              inset 0 -1px 1px rgba(255, 255, 255, 1),
+              inset 0 0 0 1px rgba(0, 0, 0, .07),
+              0 1px 0 rgba(255, 255, 255, .30);
+}
+.fslot.dxslot {   /* dx 白底只有 14 高，渐变和内阴影都收小，否则整块发灰 */
+  background: linear-gradient(180deg, #ececec 0%, #ffffff 65%, #ffffff 100%);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5),
+              inset 0 -1px 1px rgba(255, 255, 255, 1),
+              inset 0 0 0 1px rgba(0, 0, 0, .05);
+}
+
+/* ── 歌曲卡片 v18 ──────────────────────────────────────────────────────────── */
+/* 1) status 圆形印章整体放大一圈（白底 30×30 不变）：40 → 44 高，墨迹 36.3×33.6 仍吃满白圆 */
+.fslot.circle .sc-icon { height: 44px !important; }
+/* 2) LV / 定数 / dx 评分 / status：上缘高光 + 下缘阴影 → 轻微凸起。
+      PNG 有透明区域，box-shadow 只会画矩形，所以用两层 drop-shadow 按 alpha 轮廓描边：
+      第一层白色向上偏 1px = 顶边高光，第二层黑色向下偏 1.2px = 底边投影。
+      .lvcell.q 是背景贴图（不是 .gly），要单独列进来，否则 utage 的问号没有这层效果。 */
+.f-lv .gly,
+.f-lv .lvcell.q,
+.sc-icon.rk,
+.sc-icon.dx,
+.fslot.circle .sc-icon {
+  filter: drop-shadow(0 -1px 0 rgba(255, 255, 255, .55))
+          drop-shadow(0 1.2px 1px rgba(0, 0, 0, .45));
+}
+
+/* ── 歌曲卡片 v19：外框倒角 + btn 悬停放大高亮 + 点击详情面板 ──────────────── */
+/* 1) 整个卡片（base + 全部 btn）外面画一圈圆角细线，和「用户卡片」同一套语言：
+      1px rgba(255,255,255,.12)、圆角 18、不填底色，只框住这组东西。 */
+.songframe {
+  position: absolute;
+  left: 10px; top: 46px; width: 554px; height: 355px;   /* 内容实测 (20,56)-(554,391)，四周留 10 */
+  /* 逐字复制「用户卡片」= web/style.css 170-172 行 .bigcard（成绩页那张大卡）：
+     background rgba(122,162,255,.08)、border 1px rgba(122,162,255,.32)、border-radius 14px。
+     实测用户卡片截角：底色 (27,31,44)、描边 (57,73,112)，与此完全一致。 */
+  background: rgba(122, 162, 255, .08);
+  border: 1px solid rgba(122, 162, 255, .32);
+  border-radius: 14px;
+  transition: border-color .18s ease, box-shadow .18s ease;
+  z-index: 0;
+  pointer-events: none;
+}
+/* 高光只在鼠标悬停这张卡片时出现（和 .usercard.selected 的蓝框+光晕同一组值） */
+.songcard:hover .songframe {
+  border-color: #7aa2ff;
+  box-shadow: 0 10px 26px rgba(122, 162, 255, .35);
+}
+/* 2) btn 悬停：底边不动、整体放大 3.5% 并提亮（transform-origin 放底边中点） */
+.sc-row {
+  cursor: pointer;
+  transform-origin: 50% 100%;
+  transition: transform .12s ease, filter .12s ease;
+}
+.sc-row:hover { transform: scale(1.035); filter: brightness(1.08) saturate(1.06); }
+.sc-row:active { transform: scale(1.02); filter: brightness(1.04); }
+
+/* 3) 歌曲详情面板（先只做壳） */
+.songmodal {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .62);
+}
+.songmodal[hidden] { display: none; }
+.sm-card {
+  width: min(92vw, 420px); background: #171b24; border: 1px solid #2c3140; border-radius: 14px;
+  padding: 16px 18px; box-shadow: 0 10px 40px rgba(0, 0, 0, .55);
+}
+.sm-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.sm-head h2 { margin: 0; }
+.sm-title { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+.sm-artist { color: #98a0b3; font-size: 13px; }
+.sm-meta { margin-top: 10px; font-size: 14px; }
+.sm-dataid { color: #98a0b3; font-size: 12px; }
+.sm-hint { margin: 14px 0 0; color: #98a0b3; font-size: 12px; }
+
+/* ── 歌曲卡片 v20：一排 4 个的缩略网格（v24：按「外框」缩，不再按 744 画布缩） ── */
+/* 每格宽度给的是「外框」大小：外框在 .songwrap 里是 (12,55.2) 664.8×426 物理 px，
+   之前按 744 画布缩放，左右各浪费 ~12px 透明边 → 卡片小一圈。现在把框对齐到格子。 */
+.songcards { display: grid !important; grid-template-columns: repeat(var(--cols, 4), auto);
+  gap: 12px 8px; align-items: start; justify-content: start; }
+.songcard { position: relative; width: calc(664.8px * var(--ps, .44)); aspect-ratio: 554 / 355;
+  display: block !important; }
+.songcard .songwrap { position: absolute;
+  left: calc(-12px * var(--ps, .44)); top: calc(-55.2px * var(--ps, .44));
+  transform: scale(var(--ps, .44)); transform-origin: top left;
+  pointer-events: none; }        /* 744 画布比框大，透明溢出区不能挡住隔壁卡片 */
+.songcard .sc-row { pointer-events: auto; }
+/* v25：main 已全局改成 max-width:100%，这里不再需要按页放开 */
+
+/* ── 用户卡片 v26：删除模式 + 确认对话框 ─────────────────────────────────── */
+.usercard.delmode { cursor: default; }
+.usercard.delmode .ucmeta { display: none; }        /* 删除模式下不显示统计 */
+.ucdel { width: 100%; margin-top: 8px; padding: 6px 0; font-size: 13px; cursor: pointer;
+  border-radius: 8px; border: 1px solid rgba(226,104,106,.5);
+  background: rgba(226,104,106,.12); color: #ffb3b5;
+  transition: background .15s ease, border-color .15s ease; }
+.ucdel:hover { background: rgba(226,104,106,.22); border-color: rgba(226,104,106,.75); }
+#view-del.danger { border-color: rgba(226,104,106,.55); background: rgba(226,104,106,.14); color: #ffb3b5; }
+button.danger { background: #c94648; border-color: #e2686a; color: #fff; }
+button.danger:hover:not(:disabled) { background: #e2686a; }
+.usermodal { position: fixed; inset: 0; z-index: 90; display: flex;
+  align-items: center; justify-content: center; background: rgba(0, 0, 0, .62); }
+.usermodal[hidden] { display: none; }
+.um-card { width: min(92vw, 400px); background: #171b24; border: 1px solid #2c3140;
+  border-radius: 14px; padding: 16px 18px; box-shadow: 0 10px 40px rgba(0, 0, 0, .55); }
+.um-card h2 { margin: 0 0 8px; }
+.um-card .note { margin: 0 0 14px; }
+
+/* ── 成绩页 v27：大卡加载态 / 导入按钮 / 新建弹窗 / 删除确认的资料块 ── */
+.bigloading { display: flex; align-items: center; justify-content: center;
+  min-height: 340px; color: var(--dim); font-size: 14px; }   /* 和有数据的大卡同高，页面不跳 */
+.bigloading[hidden] { display: none !important; }              /* 别被上面的 display:flex 盖掉 [hidden] */
+.del-user { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
+.del-user .ucavatar { width: 64px; height: 64px; border-radius: 10px; }
+.del-user .ucname { font-size: 15px; font-weight: 700; }
+.del-user .ucmeta { font-size: 12px; opacity: .72; line-height: 1.5; }
+.um-card input[type="text"] { width: 100%; min-width: 0; margin-bottom: 8px; }
+
+.biginner { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+/* v28b：布局回到 v27 之前的列宽（220 / 1.35fr / 1.85fr，就是用户说“之前好看”的那版）。
+   选版本 + 导入成绩包在 .verbtns 里：够宽就和版本图并排，不够宽整组落到下一行（两个按钮仍并排），
+   再窄就靠 .bigcard 的 min-width 让整个页面出左右滑条，而不是把卡压变形。 */
+.verline { flex-wrap: wrap; row-gap: 8px; }
+.verbtns { display: flex; gap: 12px; flex-wrap: wrap; }
+.verbtns button { flex: 0 0 auto; }
+.bigcard { min-width: 0; }   /* v157：宽度不够时整体缩放（zoom），不再出横向滚动条 */
+
+.lvcell.plus { align-self: flex-start; }   /* utage 的 “14+” 把 + 抬到上标位置 */
+
+/* ── 歌曲卡片 v35 ──────────────────────────────────────────────────────── */
+/* 1) 类型徽标：Type_UTG 已经换成和 DX/STD 同尺寸的 84×28 图，按 DX 的样子自然渲染即可
+      （.sc-type 原有 height:55px、宽度 auto → 84×28 出来就是 165×55，不缩放不拉伸） */
+/* 2) 只有一行谱（utage）时，这一行放到“没有 remaster 的 4 行卡里 basic 那一格”：
+      .sc-rows 取消 space-between、行上边距 34.25（55 + 34.25 = 89.25，和 4 行卡实测一致） */
+.sc-rows.single { justify-content: flex-start !important; }
+.sc-rows.single .sc-row { margin-top: 34.25px !important; }   /* 上面的 .sc-row 有 margin:0 !important，这里要压过它 */
+
+/* v37：行组底部留 6 原生 px，最高难度那一行不再贴着卡片下边缘
+   （贴边时药丸的下内沿和卡片白边重合，放大/悬停时会露出药丸“里面”半截） */
+.sc-rows { padding-bottom: 6px !important; }
+
+/* v40：utage 定数里的问号（UI_NUM_UTG_Question.png 按墨迹裁，尺寸和数字一致） */
+.lvcell.q { width: auto; background-repeat: no-repeat; }
+
+/* v46：utage 的 "+" / "?" 按根目录 参考图-非常干净.png 定位（那张和贴图 1:1，alpha 核过）：
+   + 墨迹 23×23（= 贴图原尺寸，所以和数字同一 em）；? 墨迹 25×31（贴图 28×35 的 0.89）。
+   相对「个位墨迹」：+ 左缘 = 墨迹右 +1 单位、上缘 = 墨迹顶 -10；? 左缘 = 墨迹右 +4、底 = 墨迹底（底对齐）。
+   （下面的 left 是相对 .suff 的左缘，.suff 左边 = 个位格右 + gap 1.5，所以是负值）
+   .suff 宽 = 小数点+小数位（整数位对齐用，字形绝对定位不占它）；高由 levelHtml 内联给「个位字形格高」，
+   所以 bottom 的基准是 .suff 底边（= 个位字形格的底，约等于基线）；单位换算 DIGIT_EM=28 → 1 字形单位 = 0.538px。 */
+.lvcell.suff { position: relative; }
+.lvcell.suff .splus, .lvcell.suff .q { position: absolute; line-height: 0; }
+.lvcell.suff .splus { left: -3.65px; top: -4.85px; }
+.lvcell.suff .q { left: -2.33px; bottom: -0.34px; }   /* bottom 取负：让 ? 的墨迹底（不是贴图框底）和个位墨迹底齐平 */
+
+/* ── 歌曲卡片 v48：宴谱底板（Type_UTG / Type_UTG_2p）上的难度汉字 ────────────────
+   位置参照 Type_STD.png 的「标准」：墨迹 26×12 在 84×28 贴图里，水平居中、中心比贴图中心高 1 原生单位。
+   .sc-type 高 55 → 贴图按 165×55 渲染（84×28 的 1.964 倍），所以汉字 em 取 25 原生（墨迹≈23.7，和「标准」等高）。
+   效果：粗体白字 + 下凹 —— 上方 1px 暗影、下方 1px 亮边（槽底反光）。
+   位置：不按贴图正中，按 Type_DX 的「DX」logo 中心（43.5/84，比贴图中心右 1.5 单位）→ translateX(3.6px)（≈1.8 单位）。 */
+.sc-type-badge { position: relative; display: inline-block; line-height: 0; }
+.sc-type-badge .sc-type { display: block; margin: 0; }
+.sc-type-kanji { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding-bottom: 3px; color: #fff; transform: translateX(3.6px);
+  font: 700 25px/1 "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, .8), 0 1px 0 rgba(255, 255, 255, .3); }
+
+/* ── 歌曲卡片 v49：utage2p 类型徽标（Type_UTG 在上 / Type_UTG_2p 在下，左端藏进蓝底板后面） ──
+   参考图 参考图-utg2p.png（284×111）实测：蓝底板墨迹 152×44、2p 金框墨迹 128×44（= 贴图 1:1），
+   即「蓝底板墨迹高 = 2p 金框墨迹高」，2p 红面左缘正好在蓝底板墨迹右缘。
+   Type_UTG.png 84×28（墨迹 y2..25=24）按 height:55 渲染 → 墨迹 47.14，故 2p 高度 = 47.14×52/44 = 55.71
+   （55.71×44/52 = 47.14 对齐）；2p 画布左缘 = 蓝底板墨迹右缘 − 23.6（= 参考图里被底板压住的 22 单位 × 1.071）。 */
+.sc-type-badge.pair .sc-type { position: relative; z-index: 1; }
+.sc-type-badge.pair .sc-type2p {
+  position: absolute; z-index: 0; display: block; width: auto; height: 55.71px;
+  top: 50%; transform: translateY(-50%); left: calc(100% - 25.6px);
+}
+.sc-type-badge.pair .sc-type-kanji { z-index: 2; }
+
+/* ── 歌曲浏览 v52：分类 / 筛选条 / 分页 ── */
+.songbar { display: flex; gap: 10px 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 0 0 12px; }
+.songcats { display: flex; gap: 10px; align-items: center; flex: 0 0 auto; }
+.songtools { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; flex: 0 1 auto; min-width: 0; }
+.songtools select, .songtools input[type="search"] {
+  background: #0e1015; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px;
+}
+.songtools select { cursor: pointer; }
+.songtools input[type="search"] { flex: 0 1 220px; min-width: 120px; }
+.songcount { color: var(--dim); font-size: 13px; white-space: nowrap; }
+.songpager { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 20px 0 0; }
+.songpager[hidden] { display: none; }
+.songpager span { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+/* ── 歌曲浏览 v53：卡片右上角的内部号（只标数字，不写标签）
+   .songunit 坐标里卡片可见区是 (10,46)-(564,401)，所以 right/top 按这个来；字随卡缩放。 */
+.sc-id { position: absolute; top: calc(var(--ps, .44) * 16px); right: calc(var(--ps, .44) * 18px); z-index: 3;
+  font-family: "MaiBold", "Microsoft YaHei", system-ui, sans-serif;
+  font-weight: 600; font-size: calc(var(--ps, .44) * 22px); line-height: 1;
+  color: rgba(255, 255, 255, .62); letter-spacing: .5px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .6); pointer-events: none; }
+
+/* ── 歌曲浏览 v54：版本 / 牌子按钮 + 弹出框 + 搜索浮层 ───────────────────────── */
+.songver {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 4px 10px; background: #0e1015; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.songver:hover { border-color: #3a67a8; }
+.songver.on { border-color: #7aa2ff; background: rgba(122, 162, 255, .14); }
+.songver img { height: 24px; width: auto; display: block; }
+.songver .songver-label { white-space: nowrap; }
+.songsearchbtn { min-height: 34px; padding: 4px 16px; position: relative; z-index: 77; }   /* 浮层打开时按钮仍在最上层（再点一次结束） */
+.songsearchbtn.on { border-color: #7aa2ff; background: rgba(122, 162, 255, .18); }
+
+.songfilter { position: fixed; inset: 0; z-index: 78; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .62); }
+.songfilter[hidden] { display: none; }
+#songfilter { z-index: 150; }
+.sf-card { width: min(94vw, 960px); max-height: 84vh; display: flex; flex-direction: column;
+  background: #171b24; border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .6); }
+.sf-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.sf-tabs { display: flex; gap: 8px; }
+.sf-tab { background: transparent; color: var(--dim); border: 1px solid transparent; border-radius: 8px;
+  padding: 7px 16px; font-size: 14px; cursor: pointer; }
+.sf-tab[hidden] { display: none; }
+.sf-tab:hover { color: var(--fg); }
+.sf-tab.on { color: var(--fg); border-color: #3a67a8; background: rgba(122, 162, 255, .14); }
+.sf-head #sf-close { margin-left: auto; }
+.sf-body { padding: 14px; overflow: auto; }
+.sf-page[hidden] { display: none; }
+.sf-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.sf-all { padding: 6px 14px; font-size: 13px; }
+.sf-all.on { border-color: #7aa2ff; background: rgba(122, 162, 255, .18); }
+.sf-page input[type="search"] { flex: 1 1 240px; min-width: 180px; background: #0e1015; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; }
+.sf-plates { display: flex; flex-direction: column; gap: 12px; }
+.sf-group h4 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--dim); }
+.sf-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }   /* v57：一行两块，贴图放大 */
+.sf-chip { padding: 5px 10px; font-size: 12px; border-radius: 8px; background: #1f2430; }
+.sf-chip small { color: var(--dim); margin-left: 6px; }
+.sf-chip.on { border-color: #7aa2ff; background: rgba(122, 162, 255, .2); }
+/* v55：牌子筛选直接用牌子贴图（/plate/UI_Plate_xxxxxx.png，720×116） */
+.sf-plate { padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent;
+  line-height: 0; cursor: pointer; overflow: hidden; }
+.sf-plate img { width: 100%; height: auto; display: block; }
+.sf-plate:hover { border-color: #3a67a8; }
+.sf-plate.on { border-color: #7aa2ff; background: rgba(122, 162, 255, .22); }
+.sf-plate.on img { opacity: 1; }
+.sf-plate img { opacity: .92; }
+.sf-empty { color: var(--dim); font-size: 13px; }
+
+.songsearch { position: fixed; inset: 0; z-index: 76; display: flex; justify-content: center; align-items: flex-start;
+  padding-top: 10vh; background: rgba(6, 8, 13, .5); opacity: 0; transition: opacity .16s ease; }
+.songsearch.show { opacity: 1; }
+.songsearch[hidden] { display: none; }
+.ss-top { display: flex; align-items: center; gap: 12px; width: min(92vw, 780px);
+  background: #171b24; border: 1px solid #3a67a8; border-radius: 12px; padding: 12px 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .65); }
+.ss-top input { flex: 1; min-width: 0; background: #0e1015; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: inherit; font-size: 15px; }
+.ss-count { color: var(--dim); font-size: 13px; white-space: nowrap; }
+
+/* v55：搜索按钮在「搜索」和「返回」之间切换 */
+.songsearchbtn.back { border-color: #7aa2ff; background: rgba(122, 162, 255, .16); }
+
+/* v58：版本顺序切换按钮 + 牌子四档缺档空位 */
+.sf-order { margin-left: auto; padding: 6px 12px; font-size: 12px; }
+.sf-head #sf-close { margin-left: 10px; }
+.sf-plate.blank { width: 100%; aspect-ratio: 720 / 116; pointer-events: none; }
+
+/* v62：翻页条的「跳至第 N 页」 */
+.songjump { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; }
+.songjump input {
+  width: 68px; padding: 5px 8px; font: inherit; font-size: 13px;
+  background: #0e1015; color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
+}
+.songjump input:focus { outline: none; border-color: #3a67a8; }
+.songjump input::-webkit-outer-spin-button, .songjump input::-webkit-inner-spin-button { margin-left: 2px; }
+.songjump button { padding: 5px 12px; font-size: 13px; }
+
+/* v63：顶部翻页条 + 右下角回到顶端 */
+.songpager[data-pager="top"], .songpager[data-ppager="top"] { margin: 0 0 12px; }
+.pageup {
+  position: fixed; right: 22px; bottom: 22px; z-index: 60;
+  width: 58px; height: 63px; padding: 0; border: none; background: transparent; cursor: pointer;
+  opacity: 1; transition: opacity .15s ease, transform .15s ease;
+}
+.pageup img { width: 100%; height: 100%; display: block; }
+.pageup:hover { opacity: 1; transform: translateY(-3px); }
+
+/* v64：完成率统计条 / 条件按钮 / 完成条件弹窗 */
+.songstats { display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  margin: -2px 0 12px; color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+.songstats .songdiff b { color: var(--fg); font-weight: 600; }
+/* 难度名用对应颜色（和卡片上药丸的颜色一致） */
+.songstats .d-bas { color: #6ddc6d; font-weight: 600; }
+.songstats .d-adv { color: #f2c94c; font-weight: 600; }
+.songstats .d-exp { color: #e8656b; font-weight: 600; }
+.songstats .d-mas { color: #a97ae6; font-weight: 600; }
+.songstats .d-rem { color: #c9a0ff; font-weight: 600; }
+.songstats .d-utage { color: #ff7ad9; font-weight: 600; }   /* 宴（utage + utage2p 统一算） */
+.songstats[hidden] { display: none; }
+.songcrit-btn { padding: 5px 12px; font-size: 12px; }
+.sf-crit { width: min(92vw, 420px); }
+.crit-row { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; color: var(--fg); font-size: 14px; }
+.crit-row select { background: #0e1015; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+
+/* v64：pageup 放大一倍（+200%），悬停只给高亮描边、不要底色 */
+.pageup { width: 116px; height: 126px; }
+.pageup:hover:not(:disabled) { background: transparent; }
+.pageup:hover { filter: drop-shadow(0 0 6px #7aa2ff) drop-shadow(0 0 14px rgba(122, 162, 255, .75)); }
+
+/* ── v69：谱面详情 / 曲目详情 ─────────────────────────────────────────── */
+.sm-card-lg { width: min(94vw, 520px); }
+.q-bas { color: #6ddc6d; } .q-adv { color: #f2c94c; } .q-exp { color: #e8656b; }
+.q-mas { color: #a97ae6; } .q-rem { color: #c9a0ff; } .q-utage { color: #ff7ad9; }
+
+.sm-chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sm-diff { font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 6px; background: #222834; }
+.sm-chart-lv { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sm-chart-song { margin-left: auto; color: var(--dim); font-size: 12px; text-align: right; line-height: 1.35; }
+.sm-chart-song small { display: block; opacity: .75; font-size: 11px; }
+.sm-line { display: flex; gap: 20px; flex-wrap: wrap; align-items: center;
+  padding: 9px 0; border-top: 1px dashed #2a3142; font-size: 13px; color: var(--dim); }
+.sm-line b { color: var(--fg); font-weight: 600; margin-left: 6px; }
+.sm-tags { gap: 24px; }
+.sm-taggroup b { margin-right: 6px; }
+.t-pat b { color: #6aa9ff; }
+.t-diff b { color: #f2a24c; }
+.t-eval b { color: #4ac48a; }
+.sm-tag { display: inline-block; padding: 2px 8px; margin: 2px 4px 2px 0; border-radius: 6px;
+  background: #232a37; color: var(--fg); font-size: 12px; }
+.sm-taggroup i { color: #5c6577; font-style: normal; font-size: 12px; }
+
+.sf2-id { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+.sf2-top { display: flex; gap: 16px; }
+.sf2-jacket { width: 132px; height: 132px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
+.sf2-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sf2-title { font-size: 20px; font-weight: 700; line-height: 1.25; }
+.sf2-artist { color: var(--dim); font-size: 13px; }
+.sf2-meta { color: #8d96a8; font-size: 12px; }
+.sf2-verline { margin-top: 4px; }
+.sf2-ver { height: 26px; width: auto; display: block; }
+.sf2-ver-text { font-size: 12px; color: var(--dim); }
+.sf2-diffs { display: flex; flex-direction: column; gap: 6px; margin: 14px 0 10px; }
+.sf2-diff { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px;
+  background: #1d2330; border: 1px solid #2c3140; color: var(--fg); font: inherit; font-size: 13px;
+  cursor: pointer; text-align: left; }
+.sf2-diff:hover { border-color: #3a67a8; background: #222a3a; }
+.sf2-lv { display: inline-flex; font-weight: 700; min-width: 58px; font-variant-numeric: tabular-nums; }
+.sf2-lv i { display: inline-block; width: 0.7em; text-align: center; font-style: normal; }
+.sf2-ach { margin-left: auto; font-variant-numeric: tabular-nums; color: #cfd6e6; }
+.sf2-mark { font-size: 11px; padding: 1px 6px; border-radius: 5px; background: #2a3242; color: #9fd0ff; }
+.sf2-alias { font-size: 13px; color: var(--dim); line-height: 1.8; word-break: break-word; }
+.sf2-alias b { color: var(--fg); margin-right: 8px; }
+
+/* v70/v71：曲绘那块（.sc-base）要能点开曲目大页 —— .songwrap 是 pointer-events:none；
+   悬停只给 base 底图描一圈高亮，曲绘本身不提亮 */
+.songcard .sc-base { pointer-events: auto; cursor: pointer; }
+.songcard .sc-base:hover { filter: drop-shadow(0 0 7px rgba(122, 162, 255, .95)); }
+
+/* v71：谱面页压在曲目页上面；曲目页的版本贴图放大挪到右侧；难度行按列对齐 */
+#songmodal { z-index: 88; }
+.sf2-top { display: flex; gap: 16px; align-items: flex-start; position: relative; }
+.sf2-info { flex: 1 1 auto; min-width: 0; }
+.sf2-id { display: block; margin-bottom: 2px; }
+/* v74：曲绘放大（比 id→BPM 那块高），版本贴图大小不变、绝对定位到底边与曲绘对齐 */
+.sf2-verline { position: absolute; right: 0; bottom: 0; }
+.sf2-ver { height: 79px; width: auto; display: block; }
+.sf2-diff { display: grid; grid-template-columns: 70px 56px minmax(90px, 1fr) 58px 58px; gap: 8px; align-items: center; }
+.sf2-ach { justify-self: end; margin-left: 0; }
+
+/* v74：曲目页曲绘放大 + 歌名单行、越界滚动（伸到版本贴图上面） */
+.sf2-jacket { width: 168px; height: 168px; }
+.sf2-title { white-space: nowrap; overflow: hidden; }
+.sf2-title span { display: inline-block; }
+
+/* v75：曲名可点，点了复制并短暂显示「已复制」 */
+.sf2-title { cursor: pointer; position: relative; }
+.sf2-title:hover span { color: #cfe0ff; }
+.sf2-title.copied::after {
+  content: "已复制"; position: absolute; right: 0; top: -1px;
+  font-size: 11px; font-weight: 400; color: #4ac48a; background: #171b24;
+  padding: 1px 7px; border-radius: 6px; pointer-events: none;
+}
+
+/* v77：牌子模式下谱面类型锁定，显示成「锁定」标签 */
+.songlock { display: inline-flex; align-items: center; justify-content: center; min-height: 34px;
+  padding: 4px 14px; background: #0e1015; color: var(--dim); border: 1px dashed var(--line);
+  border-radius: 8px; font-size: 13px; letter-spacing: .5px; user-select: none; }
+.songlock[hidden] { display: none; }
+
+/* v78：打歌助手（空页占位） */
+.assist-empty { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 42vh; border: 1px dashed var(--line); border-radius: 14px; padding: 40px 24px; text-align: center; }
+.assist-empty h2 { margin: 0 0 8px; color: var(--fg); font-size: 18px; }
+.assist-empty .hint { margin: 0; }
+
+/* v94：卡池预览页 */
+.poolchip {
+  padding: 7px 14px; border-radius: 8px; font-size: 13px; cursor: pointer;
+  background: var(--card); color: var(--dim); border: 1px solid var(--line);
+}
+.poolchip:hover { color: var(--fg); }
+.poolchip.on { color: var(--fg); background: #2b4b7d; border-color: #3a67a8; }
+#pool-cards.is-empty { display: block !important; }
+#pool-cards:empty::after { content: "这个分类里还没有谱"; color: var(--dim); display: block; padding: 40px; text-align: center; }
+
+/* v96：难度行的空占位（5 格标尺里的空位）—— 不画药丸/白底 */
+.sc-row-empty { background: none !important; border-image: none !important; box-shadow: none !important; }
+.sc-row-empty * { display: none !important; }
+
+/* v104：只看未完成 开关 */
+.songcrit-btn.on { color: var(--fg); background: #2b4b7d; border-color: #3a67a8; }
+
+/* v105：条件弹窗去掉「完成条件」标签后，关闭按钮靠右 */
+.sf-head #crit-close { margin-left: auto; }
+
+/* v106：条件弹窗左上角标题 */
+.sf-title { color: var(--fg); font-size: 14px; font-weight: 600; letter-spacing: .3px; }
+
+/* v107：小弹窗统一成谱面/曲目详情的样式（sm-card / sm-head / sm-line） */
+.sm-crit { width: min(92vw, 420px); max-height: 84vh; overflow: auto; }
+.sm-crit .sm-head { border-bottom: none; padding: 0; }
+.sm-crit .sm-head h2 { font-size: 16px; }
+.sm-crit .crit-line { justify-content: space-between; border-top: 1px dashed #2a3142; }
+.sm-crit .crit-line select { background: #0e1015; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+.sm-crit .note { margin: 10px 0 0; color: var(--dim); font-size: 12px; }
+
+/* ── v113 设计语言：统一的小控件（按钮/chip/关闭）尺寸与选中色 ── */
+:root {
+  --r-sm: 8px; --r-md: 12px; --r-lg: 14px;
+  --btn-h: 32px;
+  --accent: #7aa2ff;
+  --accent-bg: rgba(122, 162, 255, .14);
+  --accent-line: #3a67a8;
+}
+.songcrit-btn, .poolchip, .songver, .sf-x, .songjump button,
+.sm-head button, .sf-head button, .songlock, .versionbtn {
+  min-height: var(--btn-h);
+  padding: 0 12px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+/* 选中态统一用同一个蓝 */
+.poolchip.on, .sf-tab.on, .songver.on, .songcrit-btn.on, .tab.active {
+  color: var(--fg);
+  border-color: var(--accent-line);
+  background: var(--accent-bg);
+}
+/* 弹窗统一样式：标题左、关闭右、同圆角 */
+.sm-card, .sm-crit { border-radius: var(--r-lg); }
+.sf-head h2, .sm-head h2 { font-size: 16px; margin: 0; }
+
+/* v114：卡面统一 + 翻页条按钮统一 */
+.card, .usercard, .bigcard {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.usercard:hover { border-color: var(--accent-line); }
+.usercard.selected { border-color: var(--accent); }
+.bigcard { background: var(--card); border-color: var(--line); }
+.songpager button, [data-pager] button, [data-ppager] button {
+  height: var(--btn-h);
+  padding: 0 14px;
+  font-size: 13px;
+  border-radius: var(--r-sm);
+}
+
+/* v115：小按钮的激活态更明显 —— 亮蓝底 + 亮边 + 白字 + 内侧高光 */
+.poolchip.on, .sf-tab.on, .songver.on, .songcrit-btn.on {
+  color: #fff;
+  background: rgba(86, 132, 255, .55);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(122, 162, 255, .55), 0 0 10px rgba(122, 162, 255, .25);
+  font-weight: 600;
+}
+
+/* v117：只有一页时翻页条保留但变暗 */
+.songpager.pager-dim { opacity: .4; }
+.songpager.pager-dim { pointer-events: none; }
+
+/* v118：一次性提示 5s 后淡出 */
+.note, [id$="-note"] { transition: opacity .7s ease; }
+.note-fade { opacity: 0; }
+
+/* v122：统一加载占位（脚本没跑完时显示） */
+.loading { display: flex; align-items: center; justify-content: center; min-height: 340px;
+  grid-column: 1 / -1;                       /* 卡片区是 grid 时占满整行 */
+  color: var(--dim); font-size: 14px; letter-spacing: .5px; }
+/* 卡片区里只有一个加载占位时，把它铺满整行并居中（grid 的 auto 列在没卡片时宽度是 0） */
+.songcards:has(> .loading) { display: flex !important; align-items: center; justify-content: center; }
+.songcards > .loading { flex: 1 1 auto; width: 100%; }
+.loading::before { content: ""; width: 14px; height: 14px; margin-right: 10px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* v123：成绩页大卡的加载态也统一成 .loading 的转圈样式 */
+.bigloading::before {
+  content: ""; width: 14px; height: 14px; margin-right: 10px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin .8s linear infinite; flex: 0 0 auto;
+}
+
+/* v134：卡片内的 744 画布比卡片大一圈，溢出部分会挡住翻页条、也会让悬停/点击跑到卡片外 —— 直接裁掉 */
+.songcard { overflow: hidden; }
+
+/* v134b：卡片 overflow 裁掉后，.songframe 的外发光会被裁掉 —— 改到卡片本身（filter 不受 overflow 影响） */
+.songcard:hover { filter: drop-shadow(0 10px 24px rgba(122, 162, 255, .35)); }
+
+/* v137：历史定数改成两列表格（版本 / 定数），比箭头串好读 */
+.sm-hist { margin: 4px 0 10px; }
+.sm-hist-title { color: var(--dim); font-size: 13px; margin-bottom: 4px; }
+.sm-hist-rows { display: inline-grid; grid-template-columns: auto auto; column-gap: 26px; row-gap: 3px;
+  justify-content: start; font-size: 13px; font-variant-numeric: tabular-nums; }
+.sm-hist-rows .hv { color: var(--dim); }
+.sm-hist-rows b { color: var(--fg); font-weight: 600; text-align: left; }
+
+/* v140：弹层打开时锁住页面滚动（滚轮只作用于弹层内部） */
+html.no-scroll, html.no-scroll body { overflow: hidden; }
+
+/* v144：链卡片里的「流程」行（开关默认关） */
+.chain .chain-steps { display: block; margin-top: 2px; color: #7d8699; font-size: 12px; }
+
+/* v145：数据维护页小调整 */
+.h2row { display: flex; align-items: center; gap: 12px; }
+.h2row button { padding: 3px 10px; font-size: 12px; font-weight: 400; }
+.chain b + small { margin-left: 14px; }
+.chain .chain-steps { margin-left: 0; }
+
+/* v148：步骤列表像歌词一样固定 5 行，上下淡出，跟随当前步骤滚动 */
+.steps { --step-h: 40px; position: relative; height: calc(var(--step-h) * 5); overflow: hidden; scroll-behavior: smooth;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%); }
+.steps li { min-height: var(--step-h); box-sizing: border-box; }
+
+/* 上下留白用伪元素：第一/最后一步也能滚到正中（直接用 padding 会把可视窗口撑大） */
+.steps::before, .steps::after { content: ""; display: block; height: calc(var(--step-h) * 2); }
+
+/* v164：链卡片上的「N 天前」（颜色由 JS 按新旧给） */
+.chain .chain-age { margin-left: 12px; font-size: 12px; }
+
+/* v195：收藏按钮固定谱面详情右下角；已收藏时淡红底提高可读性 */
+.sm-card { position: relative; }
+#sm-body { padding-bottom: 46px; }
+.sm-fav { position: absolute; right: 16px; bottom: 12px; z-index: 2; }
+.sm-fav.on { background: #3a1f22; border-color: #6b3236; color: #ffb4ba; }
+.sm-fav.on:hover { background: #46262a; }
+.sm-action-row { position: absolute; right: 16px; bottom: 12px; display: flex;
+  align-items: center; gap: 8px; z-index: 2; }
+.sm-action-row .sm-fav { position: static; right: auto; bottom: auto; }
+.sm-push { white-space: nowrap; }
+
+/* v196：黑名单对话框要压在谱面详情（#songmodal z-index 88）之上 */
+#bldlg { z-index: 130; }
+#scoredlg { z-index: 136; }
+#scoredlg .sm-card { width: min(92vw, 390px); }
+.score-edit-form { display: grid; gap: 10px; margin-top: 12px; }
+.score-edit-form label { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  color: var(--dim); font-size: 13px; }
+.score-edit-form input, .score-edit-form select { width: 160px; box-sizing: border-box;
+  background: #0e1015; color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 8px; font: inherit; font-size: 13px; color-scheme: dark; }
+.score-edit-form input:focus, .score-edit-form select:focus { outline: none; border-color: #3a67a8; }
+#score-note { min-height: 18px; }
+
+/* v217：卡池分类说明（在计数右边空一段距离） */
+.pooldesc { margin-left: 28px; color: var(--dim); font-size: 13px; }
+
+/* v239：个人拟合可点 + 明细表 */
+.sm-fitbtn { background: transparent; border: 0; padding: 0; color: var(--fg); font-weight: 600;
+  font-size: inherit; font-variant-numeric: tabular-nums; cursor: pointer; border-bottom: 1px dashed #6a7386; }
+.sm-fitbtn:hover { color: #7aa2ff; border-bottom-color: #7aa2ff; }
+#fitdlg { z-index: 135; }
+#fitdlg .sm-card { width: min(94vw, 560px); }
+#fit-body { max-height: 60vh; overflow: auto; }
+.fit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fit-table th { text-align: left; white-space: nowrap; padding: 5px 18px 5px 0; color: var(--dim); font-weight: 500; width: 96px; }
+.fit-table td { padding: 5px 0; font-variant-numeric: tabular-nums; }
+.fit-table tr.fit-sub th, .fit-table tr.fit-sub td { padding-top: 0; color: var(--dim); font-size: 12px; }
+.fit-tags { margin-top: 10px; color: var(--dim); font-size: 12px; }
+.fit-note { margin-top: 6px; color: var(--dim); font-size: 12px; }
+.fit-tags summary { cursor: pointer; user-select: none; }
+.fit-tags div { margin-top: 6px; line-height: 1.7; }
+.fit-tag-good { color: #65c98a; }
+.fit-tag-bad { color: #ff7b7b; }
+
+
+/* v251：头像下两个按钮横排；合计宽度 = 原「换头像」按钮宽度（60+6+60=126），
+   并继承原来的垂直居中（margin: auto），上下间隔与原版一致 */
+.bc-left .avatar-btns { display: flex; flex-direction: row; align-items: center; justify-content: center;
+  gap: 12px; width: 90%; margin-top: auto; margin-bottom: auto; }
+.bc-left .avatar-btns .btn-same { flex: 1 1 0; min-width: 0; height: 38px;
+  padding: 0; font-size: 15px; border-radius: 10px; }
+
+/* 打歌助手 */
+.assist-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+  gap: 16px; align-items: start; }
+.assist-left { min-width: 0; }
+.assist-left > .card { margin-bottom: 14px; }
+.assist-radars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.assist-radar { min-width: 0; text-align: center; }
+.assist-radar h3 { margin: 4px 0 0; font-size: 14px; color: var(--dim); font-weight: 500; }
+.assist-radar-svg { width: 100%; height: auto; max-height: 330px; }
+.assist-axis { fill: var(--dim); font-size: 11px; transition: fill .15s, font-weight .15s; }
+.assist-axis.hot.good { fill: #65c98a; font-weight: 700; }
+.assist-axis.hot.bad { fill: #ff7b7b; font-weight: 700; }
+.assist-axis.hot.neutral { fill: #7aa2ff; font-weight: 700; }
+.assist-point { transition: fill .15s; transform-box: fill-box; transform-origin: center; }
+.assist-point.hot { transform: scale(1.9); }
+.assist-point.hot.good { fill: #65c98a; }
+.assist-point.hot.bad { fill: #ff7b7b; }
+.assist-point.hot.neutral { fill: #7aa2ff; }
+.assist-hit { cursor: pointer; }
+.assist-rating { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; color: var(--dim); }
+.assist-rating b { font-size: 28px; color: var(--fg); font-variant-numeric: tabular-nums; }
+.assist-live { color: #7fcf9a; font-size: 12px; }
+.assist-palette { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.assist-pool, .assist-small { height: var(--btn-h); padding: 0 10px; font-size: 13px;
+  border-radius: var(--r-sm); }
+.assist-table { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.assist-card { position: relative; border: 1px solid var(--line); border-radius: 10px; padding: 9px; background: rgba(255,255,255,.02); }
+.assist-card-count { position: absolute; left: 0; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.assist-card-top { position: relative; display: flex; justify-content: center; align-items: center;
+  gap: 8px; min-height: 22px; padding: 0 24px; }
+.assist-card-top span { color: var(--dim); font-size: 12px; }
+.assist-card-top > span:last-child { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.assist-card-title { display: inline-block; cursor: grab; text-align: center;
+  padding: 2px 8px; margin: -2px -8px; border-radius: 4px; touch-action: none; }
+.assist-card-title:hover { background: rgba(255,255,255,.05); }
+.assist-card-title:active, .assist-dragging { cursor: grabbing; }
+.assist-dragging, .assist-dragging * { user-select: none; }
+.assist-placeholder { border: 1px dashed #5a6478; border-radius: 10px;
+  background: rgba(122,162,255,.06); min-height: 84px; }
+.assist-card-source { opacity: .28; border-style: dashed; }
+.assist-drag-image { opacity: 1 !important; pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0,0,0,.45); transform: rotate(1deg) scale(1.01);
+  background: #202632; border-color: #5a6478; }
+.assist-card-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 8px; }
+.assist-card-actions .assist-small { width: 100%; min-width: 0; padding: 0 6px; white-space: nowrap; }
+.assist-table + .hint { margin-top: 10px; }
+.assist-preview { display: block; }
+.assist-preview-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.assist-preview-slot { min-width: 0; }
+.assist-preview-pool { color: var(--dim); font-size: 12px; text-align: center; margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.assist-preview .songcards { width: 100%; }
+.assist-preview-card { width: 100%; min-height: 0; }
+.assist-preview-card .songcard { transform-origin: top left; }
+.assist-preview-btns { display: flex; gap: 6px; justify-content: center; margin-top: 5px; }
+.assist-preview-btns button { font-size: 12px; padding: 4px 8px; }
+.assist-settings { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.assist-settings label { display: flex; flex-direction: column; gap: 5px; color: var(--dim); font-size: 12px; }
+.assist-settings input { width: 100%; box-sizing: border-box; background: #0e1015; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 13px;
+  color-scheme: dark; }
+.assist-settings input:focus { outline: none; border-color: #3a67a8; }
+.assist-settings input[type="number"] { font-variant-numeric: tabular-nums; }
+.assist-status { color: var(--dim); margin-bottom: 8px; font-size: 13px; }
+.assist-status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: #555; margin-right: 6px; }
+.assist-status .dot.ok { background: #65c98a; }
+.assist-log { min-height: 360px; max-height: 65vh; overflow: auto; white-space: pre-wrap;
+  font-size: 12px; line-height: 1.55; margin: 0; color: var(--dim); }
+.assist-history { margin-bottom: 8px; color: var(--dim); font-size: 12px; }
+.assist-history summary { cursor: pointer; }
+.assist-history div { margin-top: 4px; line-height: 1.7; }
+#assistdlg .sm-crit { width: min(92vw, 420px); }
+#assistdlg .crit-line { align-items: center; }
+#assistdlg .crit-line select { width: 130px; box-sizing: border-box; }
+#assistdlg .assist-diffs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+#assistdlg .assist-diff { color: var(--dim); font-size: 12px; line-height: 1.4; padding: 4px 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: #0e1015; cursor: pointer; }
+#assistdlg .assist-diff.on { color: var(--fg); border-color: #7aa2ff; background: rgba(122, 162, 255, .16); }
+#assistdlg .assist-diff.d-basic { color: #6ddc6d; }
+#assistdlg .assist-diff.d-advanced { color: #f2c94c; }
+#assistdlg .assist-diff.d-expert { color: #e8656b; }
+#assistdlg .assist-diff.d-master { color: #a97ae6; }
+#assistdlg .assist-diff.d-remaster { color: #c9a0ff; }
+#assistdlg .assist-diff:hover { border-color: #3a67a8; }
+#assistdlg .assist-pick { width: 130px; box-sizing: border-box; text-align: left; background: #0e1015; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px;
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#assistdlg .assist-pick:hover { border-color: #3a67a8; }
+#assistdlg .crit-line input[type="number"],
+#assistdlg .crit-line input[type="text"] {
+  background: #0e1015; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px 8px; font-size: 13px; width: 130px; box-sizing: border-box;
+}
+@media (max-width: 1000px) {
+  .assist-grid { grid-template-columns: 1fr; }
+  .assist-radars { grid-template-columns: 1fr; }
+}
+#namedlg { z-index: 140; }
+#namedlg .sm-card { width: min(92vw, 380px); }
+#name-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--line); background: #10141c; color: var(--fg); font-size: 14px; }

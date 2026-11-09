@@ -1,0 +1,17 @@
+{
+  "note": "Chiffonmai 的键 → 本库 internalId 的人工修正表。只放『库里标题对不上』或『同一标题对上多首不同的曲』的条目；其余靠标题精确匹配，脚本不会猜。改完直接重跑 aliasesTag_chiffon.py 即可。",
+  "entries": {
+    "Link": {
+      "internalId": 131,
+      "why": "库里 131（maimai PLUS）与 383（ORANGE）都叫 Link。用户 2026-10-16 明确：131 是 link"
+    },
+    "Link(CoF)": {
+      "internalId": 383,
+      "why": "同上，383 是 link(cof)；这份文件用 Link(CoF) 这个键名，库里标题仍是 Link"
+    },
+    "[宴]人マニア": {
+      "internalId": 111772,
+      "why": "库里该宴谱（utage）标题写作 [X]人マニア；同曲的 dx 记录标题是人マニア，已按标题精确命中"
+    }
+  }
+}

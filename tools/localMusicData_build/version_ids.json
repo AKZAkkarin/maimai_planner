@@ -1,0 +1,51 @@
+{
+  "_说明": [
+    "版本 id → 版本名。id 就是 Music.xml 里 <AddVersion><id> 的值，也是 MusicVersion.xml 的 <name><id>。",
+    "为什么要有它：<AddVersion><str> 会坏 —— 实测 4 首曲的 str 是 '\\n    '（空白），",
+    "  music012024 OV3RCLOCK / music012025 魔法仕挂けのパレード / music100772 [狂]FREEDOM DiVE / music111023 [蔵]Blows Up Everything，",
+    "  但它们的 <AddVersion><id> 都是好的（27 / 27 / 21 / 13）。所以版本一律按 id 查这张表。",
+    "顺序与名称来自 A000/musicVersion/MusicVersion000000…000027/MusicVersion.xml 的 <name><id>/<str>（28 条）。",
+    "改这里就能改版本归属，不用动脚本。"
+  ],
+
+  "versionOrder": {
+    "maimai": 0, "maimai PLUS": 1, "GreeN": 2, "GreeN PLUS": 3,
+    "ORANGE": 4, "ORANGE PLUS": 5, "PiNK": 6, "PiNK PLUS": 7,
+    "MURASAKi": 8, "MURASAKi PLUS": 9, "MiLK": 10, "MiLK PLUS": 11,
+    "FiNALE": 12, "maimaiでらっくす": 13, "maimaiでらっくす PLUS": 14,
+    "Splash": 15, "Splash PLUS": 16, "UNiVERSE": 17, "UNiVERSE PLUS": 18,
+    "FESTiVAL": 19, "FESTiVAL PLUS": 20, "BUDDiES": 21, "BUDDiES PLUS": 22,
+    "PRiSM": 23, "PRiSM PLUS": 24, "CiRCLE": 25, "CiRCLE PLUS": 26, "MAGiCAL": 27
+  },
+
+  "byId": {
+    "0": "maimai",
+    "1": "maimaiPLUS",
+    "2": "GreeN",
+    "3": "GreeNPLUS",
+    "4": "ORANGE",
+    "5": "ORANGEPLUS",
+    "6": "PiNK",
+    "7": "PiNKPLUS",
+    "8": "MURASAKi",
+    "9": "MURASAKiPLUS",
+    "10": "MiLK",
+    "11": "MiLKPLUS",
+    "12": "FiNALE",
+    "13": "maimaDX",
+    "14": "maimaDXPLUS",
+    "15": "Splash",
+    "16": "SplashPLUS",
+    "17": "UNiVERSE",
+    "18": "UNiVERSEPLUS",
+    "19": "FESTiVAL",
+    "20": "FESTiVALPLUS",
+    "21": "BUDDiES",
+    "22": "BUDDiESPLUS",
+    "23": "PRiSM",
+    "24": "PRiSMPLUS",
+    "25": "CiRCLE",
+    "26": "CiRCLEPLUS",
+    "27": "MAGiCAL"
+  }
+}

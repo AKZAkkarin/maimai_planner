@@ -1,0 +1,52 @@
+{
+  "_说明": [
+    "版本名归一化：本地 Music.xml 的 <AddVersion><str> → 上游 dxdata 的写法。",
+    "为什么需要：本地与上游几乎同形，归一化（去空白）后只差 3 组 ——",
+    "  本地 maimaDX      ↔ 上游 maimaiでらっくす",
+    "  本地 maimaDXPLUS  ↔ 上游 maimaiでらっくす PLUS",
+    "  本地 \"\"（空串）   ↔ 上游无对应（那首曲的 AddVersion 包数据本身是坏的）",
+    "其余 25 组只差空格（maimaiPLUS ↔ maimai PLUS）。",
+    "本地版本名与顺序来自 A000/musicVersion/MusicVersionNNNNNN/MusicVersion.xml（28 条）。",
+    "改这里就能改归一化结果，不用动脚本。",
+    "canonical 段：产物（本步与下游 fusion / 牌子库）里 version 字段的统一写法 ——",
+    "  上游写 maimaiでらっくす / maimaiでらっくす PLUS，按用户 2026-10-16 口径统一成 DX / DX PLUS；",
+    "  其余 DX 时代版本名照旧（Splash、UNiVERSE…CiRCLE 含各自 PLUS、MAGiCAL 不改）。",
+    "  只改这个字段的写法，不影响上面 map 的配对逻辑。"
+  ],
+
+  "canonical": {
+    "maimaiでらっくす": "DX",
+    "maimaiでらっくす PLUS": "DX PLUS"
+  },
+
+  "map": {
+    "maimai": "maimai",
+    "maimaiPLUS": "maimai PLUS",
+    "GreeN": "GreeN",
+    "GreeNPLUS": "GreeN PLUS",
+    "ORANGE": "ORANGE",
+    "ORANGEPLUS": "ORANGE PLUS",
+    "PiNK": "PiNK",
+    "PiNKPLUS": "PiNK PLUS",
+    "MURASAKi": "MURASAKi",
+    "MURASAKiPLUS": "MURASAKi PLUS",
+    "MiLK": "MiLK",
+    "MiLKPLUS": "MiLK PLUS",
+    "FiNALE": "FiNALE",
+    "maimaDX": "maimaiでらっくす",
+    "maimaDXPLUS": "maimaiでらっくす PLUS",
+    "Splash": "Splash",
+    "SplashPLUS": "Splash PLUS",
+    "UNiVERSE": "UNiVERSE",
+    "UNiVERSEPLUS": "UNiVERSE PLUS",
+    "FESTiVAL": "FESTiVAL",
+    "FESTiVALPLUS": "FESTiVAL PLUS",
+    "BUDDiES": "BUDDiES",
+    "BUDDiESPLUS": "BUDDiES PLUS",
+    "PRiSM": "PRiSM",
+    "PRiSMPLUS": "PRiSM PLUS",
+    "CiRCLE": "CiRCLE",
+    "CiRCLEPLUS": "CiRCLE PLUS",
+    "MAGiCAL": "MAGiCAL"
+  }
+}

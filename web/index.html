@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打歌计划器</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<main>
+  <!-- 页面切换：加一个功能页 = 上面加一个 tab、下面加一个 section.page（data-page 名字要一致） -->
+  <nav class="tabs">
+    <button class="tab active" data-page="db">数据维护</button>
+    <button class="tab" data-page="scores">选择用户</button>
+    <button class="tab" data-page="songs">歌曲浏览</button>
+    <button class="tab" data-page="assistant">打歌助手</button>
+    <button class="tab" data-page="pool">卡池预览</button>
+  </nav>
+
+  <section class="page" data-page="db">
+  <div class="grid">
+    <!-- 左：各个功能（都可折叠，默认只展开建库） -->
+    <div class="col-funcs">
+
+      <details id="buildbox" class="card box" open>
+        <summary><b>建立 / 更新数据库</b></summary>
+
+        <section class="inner">
+          <h2>游戏目录</h2>
+          <div class="row">
+            <button id="pick">选择游戏目录</button>
+            <input id="pkg" type="text" readonly placeholder="还没选">
+          </div>
+          <p id="pkg-note" class="note"></p>
+        </section>
+
+        <section class="inner">
+          <h2 class="h2row">要跑什么 <button id="steps-toggle" type="button">显示流程</button></h2>
+          <div id="chains" class="chains"></div>
+          <div class="row">
+            <button id="build" class="primary" disabled>启动流程</button>
+          </div>
+          <p id="build-note" class="note"></p>
+        </section>
+      </details>
+
+      <details id="smallbox" class="card box">
+        <summary><b>数据小更新</b></summary>
+
+        <section class="inner">
+          <div class="row">
+            <button id="pick-small">选择包目录</button>
+            <input id="small" type="text" readonly placeholder="还没选">
+          </div>
+          <p id="small-note" class="note"></p>
+          <div class="row">
+            <button id="small-build" class="primary" disabled>开始小更新</button>
+          </div>
+          <p id="small-note2" class="note"></p>
+        </section>
+      </details>
+
+      <details id="alsbox" class="card box">
+        <summary><b>曲别名（Chiffonmai）</b></summary>
+
+        <section class="inner">
+          <div class="row">
+            <button id="pick-als">选择 Chiffonmai 的 JSON</button>
+            <input id="als" type="text" readonly placeholder="还没选">
+          </div>
+          <p id="als-note" class="note"></p>
+          <div class="row">
+            <button id="als-build" class="primary" disabled>更新别名</button>
+          </div>
+          <p id="als-note2" class="note"></p>
+        </section>
+      </details>
+
+
+    </div>
+
+    <!-- 右：运行信息 -->
+    <aside class="card side">
+      <h2>运行信息</h2>
+      <ol id="steps" class="steps"><li class="idle">还没有开始</li></ol>
+      <p id="result" class="result"></p>
+      <div class="row">
+        <button id="stop" disabled>中止</button>
+      </div>
+      <details id="logbox">
+        <summary>脚本输出</summary>
+        <pre id="log"></pre>
+      </details>
+    </aside>
+  </div>
+  </section>
+
+  <section class="page" data-page="scores" hidden>
+    <div id="view-loading" class="bigcard bigloading" hidden>
+      <div class="biginner">
+        <div id="loading-text">正在载入…</div>
+        <button id="loading-import" class="btn-same" hidden>导入成绩</button>
+      </div>
+    </div>
+    <div id="view-now" class="bigcard" hidden>
+      <div class="bc-left">
+        <img id="now-avatar" class="avatar big" alt="">
+        <div class="avatar-btns">
+          <button id="view-avatar-pick" class="btn-same">头像</button>
+          <button id="view-name-edit" class="btn-same">名字</button>
+        </div>
+      </div>
+
+      <div class="bc-mid">
+        <div id="now-name" class="bcname"></div>
+        <canvas id="rating-img" class="rating" width="664" height="130"></canvas>
+        <div class="verline">
+          <img id="version-img" class="versionimg" alt="">
+          <div class="verbtns">
+            <button id="version-btn" class="btn-same">选版本</button>
+            <button id="import-btn" class="btn-same">导入成绩</button>
+          </div>
+        </div>
+        <p id="view-avatar-note" class="note"></p>
+      </div>
+
+      <div class="bc-right">
+        <div class="playedline"><span class="stat-label">游玩谱面数</span><b id="stat-played">—</b></div>
+        <div class="statbox">
+          <div id="badge-icons" class="sgrid"></div>
+          <div id="badge-values" class="sgrid values"></div>
+          <div class="sgrid-sep"></div>
+          <div id="rank-icons" class="sgrid"></div>
+          <div id="rank-values" class="sgrid values"></div>
+        </div>
+        <p id="view-stats-at" class="note"></p>
+      </div>
+    </div>
+
+    <div class="row bar">
+      <button id="view-new">新建用户</button>
+      <button id="view-del">删除用户</button>
+      <span id="view-new-note" class="note"></span>
+    </div>
+
+    <div id="user-cards" class="usercards"></div>
+  </section>
+
+  <div id="verbox" class="verbox" hidden>
+    <div class="vercard">
+      <div class="row verhead">
+        <h2>选择游戏版本</h2>
+        <button id="ver-close">关闭</button>
+      </div>
+      <div id="ver-grid" class="vergrid"></div>
+    </div>
+  </div>
+
+  <section class="page" data-page="songs" hidden>
+    <div class="songbar">
+      <div class="songcats" id="song-cats">
+        <span class="songcount" id="song-count">加载中…</span>
+        <button id="song-crit-btn" class="songcrit-btn" title="完成条件（分数线 / 连击 / 双人）">条件</button>
+        <button id="song-incomplete" class="songcrit-btn" title="只看还没达到条件的谱面">只看未完成</button>
+      </div>
+      <div class="songtools">
+        <button id="song-verbtn" class="songver" title="版本 / 牌子条件"><span class="songver-label">全部版本</span></button>
+        <select id="song-family" aria-label="谱面族">
+          <option value="">全部谱面</option>
+          <option value="dxstd" selected>DX / STD</option>
+          <option value="utageall">宴 / 2P 宴</option>
+          <option value="dx">DX</option>
+          <option value="std">STD</option>
+          <option value="utage">宴</option>
+          <option value="utage2p">2P 宴</option>
+        </select>
+        <span id="song-family-lock" class="songlock" title="按牌子看时，谱面类型由牌子条件决定" hidden>锁定</span>
+        <select id="song-sort" aria-label="排序">
+          <option value="dataid-desc">乐曲id ↓</option>
+          <option value="dataid-asc">乐曲id ↑</option>
+          <option value="level-desc">定数 ↓</option>
+          <option value="level-asc">定数 ↑</option>
+          <option value="title">曲名</option>
+        </select>
+        <button id="song-searchbtn" class="songsearchbtn" title="搜索（曲名 / 别名 / 作者 / id）">搜索</button>
+      </div>
+    </div>
+    <div class="songstats" id="song-stats"></div>
+    <div class="songpager" data-pager="top" hidden></div>
+    <div id="song-cards" class="songcards"></div>
+    <div class="songpager" data-pager="bottom" hidden></div>
+
+    <!-- 完成条件（分数线 / 连击 / 双人） -->
+    <div id="songcrit" class="songfilter" hidden>
+      <div class="sm-card sm-crit">
+        <div class="sm-head">
+          <h2>选择完成条件</h2>
+          <button id="crit-close" type="button">关闭</button>
+        </div>
+        <label class="sm-line crit-line"><span>达成率 ≥</span>
+          <select id="crit-score">
+            <option value="80">80.0%</option>
+            <option value="90">90.0%</option>
+            <option value="95">95.0%</option>
+            <option value="97">97.0%</option>
+            <option value="98">98.0%</option>
+            <option value="99">99.0%</option>
+            <option value="99.5">99.5%</option>
+            <option value="100" selected>100.0%</option>
+            <option value="100.5">100.5%</option>
+          </select>
+        </label>
+        <label class="sm-line crit-line"><span>连击状态 ≥</span>
+          <select id="crit-combo">
+            <option value="0">任意</option>
+            <option value="1" selected>FC</option>
+            <option value="2">FC+</option>
+            <option value="3">AP</option>
+            <option value="4">AP+</option>
+          </select>
+        </label>
+        <label class="sm-line crit-line"><span>双人游玩状态 ≥</span>
+          <select id="crit-sync">
+            <option value="0" selected>任意</option>
+            <option value="1">FS</option>
+            <option value="2">FS+</option>
+            <option value="3">FSD</option>
+            <option value="4">FSD+</option>
+            <option value="5">SP</option>
+          </select>
+        </label>
+        <p class="note">只影响左上角完成率和各难度进度，不影响列表筛选。</p>
+      </div>
+    </div>
+
+    <!-- 右下角固定的「回到顶端」贴图 -->
+    <button class="pageup" data-pageup title="回到顶端">
+      <img src="/ui/musicLib/pageup.png" alt="回到顶端">
+    </button>
+
+    <!-- v54：搜索浮层（按钮开，输入法不跳） -->
+    <div id="songsearch" class="songsearch" hidden>
+      <div class="ss-top">
+        <input id="ss-input" type="search" placeholder="曲名/别名/艺术家/id-xxxx" autocomplete="off" spellcheck="false">
+        <span class="ss-count" id="ss-count"></span>
+        <button id="ss-ok" class="primary">确定</button>
+        <button id="ss-cancel">取消</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="cropbox" class="cropbox" hidden>
+    <div class="crop-card">
+      <h2>裁剪头像</h2>
+      <p class="hint">这张图不是 1:1，把要的部分拖进方框里（拖动图片，滚轮或滑杆缩放）。
+        确认后会转成 PNG 并缩放到 256×256。</p>
+      <div id="crop-stage" class="crop-stage">
+        <img id="crop-img" alt="">
+        <div class="crop-frame"></div>
+      </div>
+      <div class="row">
+        <input id="crop-zoom" type="range" min="100" max="400" value="100">
+        <button id="crop-ok" class="primary">用这一块</button>
+        <button id="crop-cancel">取消</button>
+      </div>
+      <p id="crop-note" class="note"></p>
+    </div>
+  </div>
+</main>
+<div id="newmodal" class="usermodal" hidden>
+    <div class="um-card" role="dialog" aria-modal="true" aria-label="新建用户">
+      <h2>新建用户</h2>
+      <input id="new-name" type="text" placeholder="用户名（不能重名）">
+      <p id="new-note" class="note"></p>
+      <div class="row"><button id="new-ok" class="primary">新建</button><button id="new-cancel">取消</button></div>
+    </div>
+  </div>
+  <div id="delmodal" class="usermodal" hidden>
+    <div class="um-card" role="dialog" aria-modal="true" aria-label="删除用户">
+      <h2>删除用户</h2>
+      <div class="del-user">
+        <img id="del-avatar" class="ucavatar" alt="">
+        <div>
+          <div id="del-name" class="ucname"></div>
+          <div id="del-info" class="ucmeta"></div>
+        </div>
+      </div>
+      <p id="del-text" class="note"></p>
+      <div class="row"><button id="del-ok" class="danger">删除</button><button id="del-cancel">取消</button></div>
+    </div>
+  </div>
+  <section class="page" data-page="pool" hidden>
+    <div class="songbar">
+      <div class="songcats">
+        <span class="songcount" id="pool-count">加载中…</span>
+        <span class="pooldesc" id="pool-desc"></span>
+      </div>
+      <div class="songtools" id="pool-chips">
+        <button class="poolchip on" data-label="mastered">熟练</button>
+        <button class="poolchip" data-label="pushable_b35">推b35</button>
+        <button class="poolchip" data-label="pushable_b15">推b15</button>
+        <button class="poolchip" data-label="ap">AP推分</button>
+        <button class="poolchip" data-label="practice">弱点练习</button>
+        <button class="poolchip" data-label="accuracy">准度练习</button>
+        <button class="poolchip" data-label="challenge">有挑战</button>
+        <button class="poolchip" data-label="unplayed">待开荒</button>
+        <button class="poolchip" data-label="favorite">收藏</button>
+        <button class="poolchip" data-label="blacklist">黑名单</button>
+        <select id="pool-sort" aria-label="排序">
+          <option value="dataid-desc">乐曲id ↓</option>
+          <option value="dataid-asc">乐曲id ↑</option>
+          <option value="level-desc">定数 ↓</option>
+          <option value="level-asc">定数 ↑</option>
+          <option value="title">曲名</option>
+        </select>
+      </div>
+    </div>
+    <div class="songpager" data-ppager="top" hidden></div>
+    <div id="pool-cards" class="songcards"></div>
+    <div class="songpager" data-ppager="bottom" hidden></div>
+
+    <button class="pageup" data-pageup title="回到顶端">
+      <img src="/ui/musicLib/pageup.png" alt="回到顶端">
+    </button>
+  </section>
+
+  <section class="page" data-page="assistant" hidden>
+    <div class="assist-grid">
+      <div class="assist-left">
+        <details class="card box" open>
+          <summary><b>能力画像</b></summary>
+          <div class="inner">
+            <div id="assist-rating" class="assist-rating"></div>
+            <div class="assist-radars">
+              <div class="assist-radar"><h3>配置标签</h3><div id="assist-radar-config"></div></div>
+              <div class="assist-radar"><h3>评价标签</h3><div id="assist-radar-eval"></div></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="card box" open>
+          <summary><b>牌桌</b></summary>
+          <div class="inner">
+            <div id="assist-palette" class="assist-palette"></div>
+            <div id="assist-table" class="assist-table"></div>
+            <p class="hint">最多 12 张；可拖动排序；脚本运行时锁定。</p>
+          </div>
+        </details>
+
+        <details class="card box" open>
+          <summary><b>接下来三首</b></summary>
+          <div class="inner"><div id="assist-preview" class="assist-preview"></div></div>
+        </details>
+
+        <details class="card box" open>
+          <summary><b>启动</b></summary>
+          <div class="inner">
+            <div class="assist-settings">
+              <label>游戏机 IP <input id="assist-host" type="text" placeholder="机台局域网 IP"></label>
+              <label>mod 端口 <input id="assist-mod-port" type="number" value="8790" placeholder="默认8790"></label>
+              <label>回传端口 <input id="assist-callback-port" type="number" value="20010" placeholder="默认20010"></label>
+            </div>
+            <div class="row">
+              <button id="assist-start" class="primary" data-act="assist-start">启动脚本</button>
+              <button id="assist-start-score" data-act="assist-start-score">仅接收成绩</button>
+              <button id="assist-stop" data-act="assist-stop" disabled>结束脚本</button>
+            </div>
+          </div>
+        </details>
+      </div>
+      <aside class="card side">
+        <h2>脚本输出</h2>
+        <div id="assist-status" class="assist-status"></div>
+        <details class="assist-history"><summary>历史日志</summary><div id="assist-history"></div></details>
+        <pre id="assist-log" class="assist-log"></pre>
+      </aside>
+    </div>
+  </section>
+
+  <div id="assistdlg" class="songfilter" hidden>
+    <div class="sm-card sm-crit">
+      <div class="sm-head"><h2>卡片设置</h2><button id="assist-cancel-settings" type="button">关闭</button></div>
+      <div id="assist-form"></div>
+    </div>
+  </div>
+
+    <!-- v54：版本 / 牌子条件 弹出框（一个按钮开两页） -->
+    <div id="songfilter" class="songfilter" hidden>
+      <div class="sf-card" role="dialog" aria-label="版本与牌子条件">
+        <div class="sf-head">
+          <div class="sf-tabs">
+            <button class="sf-tab on" data-tab="version">版本</button>
+            <button class="sf-tab" data-tab="plate">牌子条件</button>
+          </div>
+          <button id="sf-order" class="sf-order" title="版本顺序">maimai → 最新</button>
+          <button id="sf-close">关闭</button>
+        </div>
+        <div class="sf-body">
+          <div class="sf-page" data-page="version">
+            <div class="sf-row"><button class="sf-all" id="sf-ver-all">全部版本</button></div>
+            <div id="sf-versions" class="vergrid"></div>
+          </div>
+          <div class="sf-page" data-page="plate" hidden>
+            <div class="sf-row">
+              <button class="sf-all" id="sf-plate-all">返回</button>
+              <input id="sf-plate-q" type="search" placeholder="搜牌子：名字 / 条件 / 版本">
+            </div>
+            <div id="sf-plates" class="sf-plates"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 谱面成绩编辑 -->
+    <div id="scoredlg" class="songfilter" hidden>
+      <div class="sm-card" role="dialog" aria-modal="true" aria-label="编辑成绩">
+        <div class="sm-head">
+          <h2>编辑成绩</h2>
+          <button id="score-cancel" type="button">取消</button>
+        </div>
+        <p class="note" id="score-title"></p>
+        <div class="score-edit-form">
+          <label>达成率 (%)
+            <input id="score-ach" type="number" step="0.0001" min="0" max="101" inputmode="decimal">
+          </label>
+          <label>DX 分
+            <input id="score-dx" type="number" step="1" min="0" inputmode="numeric">
+          </label>
+          <label>游玩次数
+            <input id="score-play" type="number" step="1" min="0" inputmode="numeric">
+          </label>
+          <label>连击
+            <select id="score-combo"></select>
+          </label>
+          <label>双人
+            <select id="score-sync"></select>
+          </label>
+        </div>
+        <p class="note" id="score-note"></p>
+        <div class="row" style="margin-top:14px">
+          <button id="score-save" class="primary" type="button">保存并重算</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 黑名单时长选择 -->
+    <div id="bldlg" class="songfilter" hidden>
+      <div class="sm-card sm-crit">
+        <div class="sm-head">
+          <h2>加入黑名单</h2>
+          <button id="bl-cancel" type="button">取消</button>
+        </div>
+        <p class="note" id="bl-title"></p>
+        <div class="songtools" style="gap:8px;flex-wrap:wrap">
+          <button class="poolchip" data-dur="1d">1 天</button>
+          <button class="poolchip" data-dur="3d">3 天</button>
+          <button class="poolchip" data-dur="7d">7 天</button>
+          <button class="poolchip" data-dur="30d">30 天</button>
+          <button class="poolchip" data-dur="forever">永久</button>
+        </div>
+        <p class="hint">黑名单里的谱不会推送到机台；过期自动失效。</p>
+      </div>
+    </div>
+
+  <div id="fitdlg" class="songfilter" hidden>
+    <div class="sm-card" role="dialog" aria-modal="true" aria-label="个人拟合明细">
+      <div class="sm-head">
+        <h2>详细修正过程</h2>
+        <button id="fit-close" type="button">关闭</button>
+      </div>
+      <p class="note" id="fit-title"></p>
+      <div id="fit-body"></div>
+    </div>
+  </div>
+  <div id="namedlg" class="songfilter" hidden>
+    <div class="sm-card" role="dialog" aria-modal="true" aria-label="改用户名">
+      <div class="sm-head">
+        <h2>改用户名</h2>
+        <button id="name-cancel" type="button">取消</button>
+      </div>
+      <input id="name-input" type="text" maxlength="24" placeholder="新的用户名">
+      <div class="row" style="margin-top:14px">
+        <button id="name-ok" class="primary">保存</button>
+      </div>
+    </div>
+  </div>
+  <div id="songmodal" class="songmodal" hidden>
+    <div class="sm-card" role="dialog" aria-modal="true" aria-label="谱面详情">
+      <div class="sm-head">
+        <h2>谱面详情</h2>
+        <button id="sm-close" type="button">关闭</button>
+      </div>
+      <div id="sm-body"></div>
+    </div>
+  </div>
+  <div id="songfull" class="songmodal" hidden>
+    <div class="sm-card sm-card-lg" role="dialog" aria-modal="true" aria-label="曲目详情">
+      <div class="sm-head">
+        <h2>曲目详情</h2>
+        <button id="sf2-close" type="button">关闭</button>
+      </div>
+      <div id="sf2-body"></div>
+    </div>
+  </div>
+  <script src="/vendor/Sortable.min.js"></script>
+  <script type="module" src="/main.js"></script>
+  <div id="pickmask" class="pickmask" hidden><div>请选择</div></div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "_说明": [
+    "版本名归一化：本地 Music.xml 的 <AddVersion><str> → 项目统一写法（取 dxrating 那套）。",
+    "为什么需要它：本地与上游几乎完全同形，只差 3 组 ——",
+    "  本地 maimaDX      ↔ 上游 maimaiでらっくす",
+    "  本地 maimaDXPLUS  ↔ 上游 maimaiでらっくす PLUS",
+    "  本地 \"\"（空串）   ↔ 上游没有对应（那 1 首曲的包数据 AddVersion 是坏的）",
+    "其余 25 组只差空格（maimaiPLUS ↔ maimai PLUS），比对时先去掉所有空白再查表。",
+    "本地版本名与顺序来自 A000/musicVersion/MusicVersionNNNNNN/MusicVersion.xml（28 条）。",
+    "改这里就能改归一化结果，不用动脚本。"
+  ],
+
+  "map": {
+    "maimai": "maimai",
+    "maimaiPLUS": "maimai PLUS",
+    "GreeN": "GreeN",
+    "GreeNPLUS": "GreeN PLUS",
+    "ORANGE": "ORANGE",
+    "ORANGEPLUS": "ORANGE PLUS",
+    "PiNK": "PiNK",
+    "PiNKPLUS": "PiNK PLUS",
+    "MURASAKi": "MURASAKi",
+    "MURASAKiPLUS": "MURASAKi PLUS",
+    "MiLK": "MiLK",
+    "MiLKPLUS": "MiLK PLUS",
+    "FiNALE": "FiNALE",
+    "maimaDX": "maimaiでらっくす",
+    "maimaDXPLUS": "maimaiでらっくす PLUS",
+    "Splash": "Splash",
+    "SplashPLUS": "Splash PLUS",
+    "UNiVERSE": "UNiVERSE",
+    "UNiVERSEPLUS": "UNiVERSE PLUS",
+    "FESTiVAL": "FESTiVAL",
+    "FESTiVALPLUS": "FESTiVAL PLUS",
+    "BUDDiES": "BUDDiES",
+    "BUDDiESPLUS": "BUDDiES PLUS",
+    "PRiSM": "PRiSM",
+    "PRiSMPLUS": "PRiSM PLUS",
+    "CiRCLE": "CiRCLE",
+    "CiRCLEPLUS": "CiRCLE PLUS",
+    "MAGiCAL": "MAGiCAL"
+  }
+}

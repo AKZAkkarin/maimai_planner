@@ -1,0 +1,29 @@
+# 运行时生成的数据库
+data/
+dataUser/
+
+# 游戏素材和字体（本地使用，不随源码发布）
+dataUI/
+dataUI_VG/
+Fonts/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# 日志和临时文件
+*.log
+*.tmp
+tools/run_chain/.logs/
+
+# 本地配置
+.env
+
+# 设计稿
+*.psd
+
+# 系统文件
+.DS_Store
+Thumbs.db

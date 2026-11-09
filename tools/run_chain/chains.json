@@ -1,0 +1,498 @@
+{
+  "schema": 1,
+  "note": "构建链步骤表。products = 该步跑完后必须带着本批 runId 的产物文件（相对 maimai-planner/）；needs 给前端提示用：network 要联网、proxy 要走系统代理、gamePackage 要选游戏包目录。链只管建库 —— 校验与自检不在链上。",
+  "chains": {
+    "full": {
+      "title": "从零建立数据库",
+      "steps": [
+        {
+          "script": "catalog_dxdata",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/catalog_dxdata/dxdata.meta.json"
+          ]
+        },
+        {
+          "script": "localMusicData_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/localMusicData_build/localMusicData-dx.json",
+            "data/localMusicData_build/localMusicData-std.json",
+            "data/localMusicData_build/localMusicData-utage.json",
+            "data/localMusicData_build/localMusicData-utage2p.json"
+          ]
+        },
+        {
+          "script": "dxrating_build",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/dxrating_build/dxrating-dx.json",
+            "data/dxrating_build/dxrating-std.json",
+            "data/dxrating_build/dxrating-utage.json",
+            "data/dxrating_build/dxrating-utage2p.json"
+          ]
+        },
+        {
+          "script": "aliasesTag_catalog",
+          "products": [
+            "data/aliasesTag_catalog/aliasesTag.json"
+          ]
+        },
+        {
+          "script": "Proofread-build",
+          "products": [
+            "data/Proofread-build/Proofread-dx.json",
+            "data/Proofread-build/Proofread-std.json",
+            "data/Proofread-build/Proofread-utage.json",
+            "data/Proofread-build/Proofread-utage2p.json"
+          ]
+        },
+        {
+          "script": "tag_catalog",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/tag_catalog/tags.json"
+          ]
+        },
+        {
+          "script": "aliasesTag_lxns",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/aliasesTag_lxns/aliasesTag-lxns.json"
+          ]
+        },
+        {
+          "script": "fusion",
+          "products": [
+            "data/fusion/fusion-dx.json",
+            "data/fusion/fusion-std.json",
+            "data/fusion/fusion-utage.json",
+            "data/fusion/fusion-utage2p.json"
+          ]
+        },
+        {
+          "script": "fit_diff",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/fit_diff/fit_diff.json"
+          ]
+        },
+        {
+          "script": "plate_inventory",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/plate_inventory/plate_inventory.json",
+            "data/plate_inventory/plate_map.json"
+          ]
+        },
+        {
+          "script": "plate_conditions",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/plate_conditions/plates.json"
+          ]
+        },
+        {
+          "script": "nameplate_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/image/nameplate/nameplate_build.json"
+          ]
+        },
+        {
+          "script": "cover_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "--all",
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/image/cover/cover_build.json"
+          ]
+        }
+      ]
+    },
+    "afterGameUpdate": {
+      "title": "更换游戏包",
+      "steps": [
+        {
+          "script": "localMusicData_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/localMusicData_build/localMusicData-dx.json",
+            "data/localMusicData_build/localMusicData-std.json",
+            "data/localMusicData_build/localMusicData-utage.json",
+            "data/localMusicData_build/localMusicData-utage2p.json"
+          ]
+        },
+        {
+          "script": "Proofread-build",
+          "products": [
+            "data/Proofread-build/Proofread-dx.json",
+            "data/Proofread-build/Proofread-std.json",
+            "data/Proofread-build/Proofread-utage.json",
+            "data/Proofread-build/Proofread-utage2p.json"
+          ]
+        },
+        {
+          "script": "fusion",
+          "products": [
+            "data/fusion/fusion-dx.json",
+            "data/fusion/fusion-std.json",
+            "data/fusion/fusion-utage.json",
+            "data/fusion/fusion-utage2p.json"
+          ]
+        },
+        {
+          "script": "plate_inventory",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/plate_inventory/plate_inventory.json",
+            "data/plate_inventory/plate_map.json"
+          ]
+        },
+        {
+          "script": "plate_conditions",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/plate_conditions/plates.json"
+          ]
+        },
+        {
+          "script": "cover_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "--all",
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/image/cover/cover_build.json"
+          ]
+        }
+      ]
+    },
+    "smallUpdate": {
+      "title": "数据小更新",
+      "steps": [
+        {
+          "script": "localMusicData_build",
+          "needs": [
+            "gamePackage",
+            "packageDir"
+          ],
+          "args": [
+            "--merge",
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/localMusicData_build/localMusicData-dx.json",
+            "data/localMusicData_build/localMusicData-std.json",
+            "data/localMusicData_build/localMusicData-utage.json",
+            "data/localMusicData_build/localMusicData-utage2p.json"
+          ]
+        },
+        {
+          "script": "Proofread-build",
+          "products": [
+            "data/Proofread-build/Proofread-dx.json",
+            "data/Proofread-build/Proofread-std.json",
+            "data/Proofread-build/Proofread-utage.json",
+            "data/Proofread-build/Proofread-utage2p.json"
+          ]
+        },
+        {
+          "script": "fusion",
+          "products": [
+            "data/fusion/fusion-dx.json",
+            "data/fusion/fusion-std.json",
+            "data/fusion/fusion-utage.json",
+            "data/fusion/fusion-utage2p.json"
+          ]
+        },
+        {
+          "script": "fit_diff",
+          "args": [
+            "--from-file",
+            "data/fit_diff/chart_stats.json"
+          ],
+          "products": [
+            "data/fit_diff/fit_diff.json"
+          ]
+        },
+        {
+          "script": "cover_build",
+          "needs": [
+            "gamePackage",
+            "packageDir"
+          ],
+          "args": [
+            "--all",
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/image/cover/cover_build.json"
+          ]
+        }
+      ]
+    },
+    "plateBuild": {
+      "title": "建立牌子数据库",
+      "steps": [
+        {
+          "script": "plate_inventory",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/plate_inventory/plate_inventory.json",
+            "data/plate_inventory/plate_map.json"
+          ]
+        },
+        {
+          "script": "plate_conditions",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/plate_conditions/plates.json"
+          ]
+        },
+        {
+          "script": "nameplate_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/image/nameplate/nameplate_build.json"
+          ]
+        }
+      ]
+    },
+    "coverBuild": {
+      "title": "曲绘转换",
+      "steps": [
+        {
+          "script": "cover_build",
+          "needs": [
+            "gamePackage"
+          ],
+          "args": [
+            "--all",
+            "-i",
+            "{gamePackage}"
+          ],
+          "products": [
+            "data/image/cover/cover_build.json"
+          ]
+        }
+      ]
+    },
+    "dxratingUpdate": {
+      "title": "联网更新数据",
+      "steps": [
+        {
+          "script": "catalog_dxdata",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/catalog_dxdata/dxdata.meta.json"
+          ]
+        },
+        {
+          "script": "dxrating_build",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/dxrating_build/dxrating-dx.json",
+            "data/dxrating_build/dxrating-std.json",
+            "data/dxrating_build/dxrating-utage.json",
+            "data/dxrating_build/dxrating-utage2p.json"
+          ]
+        },
+        {
+          "script": "aliasesTag_catalog",
+          "products": [
+            "data/aliasesTag_catalog/aliasesTag.json"
+          ]
+        },
+        {
+          "script": "Proofread-build",
+          "products": [
+            "data/Proofread-build/Proofread-dx.json",
+            "data/Proofread-build/Proofread-std.json",
+            "data/Proofread-build/Proofread-utage.json",
+            "data/Proofread-build/Proofread-utage2p.json"
+          ]
+        },
+        {
+          "script": "tag_catalog",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/tag_catalog/tags.json"
+          ]
+        },
+        {
+          "script": "aliasesTag_lxns",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/aliasesTag_lxns/aliasesTag-lxns.json"
+          ]
+        },
+        {
+          "script": "fusion",
+          "products": [
+            "data/fusion/fusion-dx.json",
+            "data/fusion/fusion-std.json",
+            "data/fusion/fusion-utage.json",
+            "data/fusion/fusion-utage2p.json"
+          ]
+        },
+        {
+          "script": "fit_diff",
+          "needs": [
+            "network",
+            "proxy"
+          ],
+          "products": [
+            "data/fit_diff/fit_diff.json"
+          ]
+        }
+      ]
+    },
+    "aliasesUpdate": {
+      "title": "更新曲别名",
+      "steps": [
+        {
+          "script": "aliasesTag_chiffon",
+          "needs": [
+            "als"
+          ],
+          "args": [
+            "--als",
+            "{als}"
+          ],
+          "products": [
+            "data/aliasesTag_chiffon/aliasesTag-chiffon.json"
+          ]
+        },
+        {
+          "script": "fusion",
+          "products": [
+            "data/fusion/fusion-dx.json",
+            "data/fusion/fusion-std.json",
+            "data/fusion/fusion-utage.json",
+            "data/fusion/fusion-utage2p.json"
+          ]
+        }
+      ]
+    },
+    "scoresImport": {
+      "title": "导入成绩",
+      "steps": [
+        {
+          "script": "scores_import",
+          "needs": [
+            "scores",
+            "user"
+          ],
+          "args": [
+            "--input",
+            "{scores}",
+            "--user",
+            "{user}"
+          ],
+          "products": [
+            "dataUser/last-import.json"
+          ]
+        }
+      ]
+    }
+  }
+}

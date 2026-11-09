@@ -1,0 +1,29 @@
+{
+  "_说明": [
+    "字段取舍策略：本地曲库（localMusicData_build 读游戏包）与上游 dxrating 冲突时，这一个字段取谁。",
+    "改这里就能改覆盖规则，不用动脚本。",
+    "",
+    "取值：",
+    "  local      取本地值（differences 里仍会记下上游的值，便于回查）",
+    "  upstream   取上游值",
+    "  both       两个值都留，开成子条目分开计（不合并）",
+    "  localOnly  只有本地有（上游没这个字段，比如本地谱面的 level）",
+    "  upstreamOnly 只有上游有（本地没有，比如 bpm / isNew / isLocked）",
+    "",
+    "缺省：policy 里没写的字段一律按 local 处理（用户 2026-10-16 定：默认本地为准）。",
+    "派生字段 xDiff 不必配置：某字段既有本地值又有上游值且两者不同时留 true。"
+  ],
+
+  "policy": {
+    "internalLevelValue": "both",
+    "version": "local",
+    "artist": "local",
+    "title": "local",
+    "bpm": "upstreamOnly",
+    "isNew": "upstreamOnly",
+    "isLocked": "upstreamOnly",
+    "noteCountsTotal": "local",
+    "noteDesigner": "local",
+    "level": "localOnly"
+  }
+}
